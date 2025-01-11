@@ -1,0 +1,20 @@
+schemaVersion: v1
+
+questions:
+  project_name:
+    type: str
+    help: Please enter the name of your project
+
+  project_author:
+    type: str
+    help: "Please enter the author's name for {{project_name}}"
+
+  project_slug:
+    type: str
+    help: Please enter the project slug (or press Enter to use the default)
+    default: "{{ project_name|lower|replace(' ', '_') }}"
+
+  use_tests:
+    type: bool
+    help: Will your project include tests?
+    default: true

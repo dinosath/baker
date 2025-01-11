@@ -1,0 +1,29 @@
+[package]
+name = "baker"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ali Aliyev <ali@aliev.me>"]
+repository = "https://github.com/aliev/baker"
+categories = ["command-line-utilities"]
+description = "baker: project scaffolding tool"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+thiserror = "2.0"
+serde_json = "1.0"
+indexmap = { version = "2.7", features = ["serde"] }
+minijinja = { version = "2.5", features = ["builtins"] }
+globset = "0.4"
+walkdir = "2.5"
+git2 = "0.20"
+serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
+serde_yaml = "0.9"
+url = "2.5"
+dialoguer = { version = "0.10.0", features = ["fuzzy-select"] }
+
+[dev-dependencies]
+tempfile = "3.15"

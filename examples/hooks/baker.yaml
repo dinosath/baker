@@ -1,0 +1,13 @@
+schemaVersion: v1
+
+questions:
+  license:
+    type: str
+    help: "Please select a licence"
+    default: MIT
+    choices:
+      - MIT
+      - BSD
+      - GPLv3
+      - Apache Software License 2.0
+      - Not open source
