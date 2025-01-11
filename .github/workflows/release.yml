@@ -25,10 +25,6 @@ jobs:
             release_name: baker-windows-amd64.exe
           - os: macos-latest
             artifact_name: baker
-            release_name: baker-macos-amd64
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            artifact_name: baker
             release_name: baker-macos-arm64
             target: aarch64-apple-darwin
 
@@ -47,6 +43,9 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
+      - name: Test
+        run: cargo test --verbose
+
       - name: Build Release
         run: |
           if [ "${{ matrix.target }}" != "" ]; then
@@ -55,9 +54,6 @@ jobs:
             cargo build --verbose --release
           fi
         shell: bash
-
-      - name: Test
-        run: cargo test --verbose
 
       - name: Prepare release asset
         shell: bash
