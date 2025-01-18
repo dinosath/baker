@@ -149,12 +149,6 @@ pub fn run(args: Args) -> Result<()> {
             || args.skip_confirms.contains(&crate::cli::SkipConfirm::Overwrite),
     )?;
 
-    // let config = Config::new()
-    //     .from_json(template_root.join("baker.json"))
-    //     .from_yaml(template_root.join("baker.yaml"))
-    //     .from_yml(template_root.join("baker.yml"))
-    //     .build()?;
-
     let config = Config::load_config(&template_root)?;
 
     let Config::V1(config) = config;
