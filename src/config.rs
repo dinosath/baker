@@ -69,6 +69,8 @@ impl Config {
         if let Ok(contents) = std::fs::read_to_string(path) {
             if let Ok(config) = serde_json::from_str(&contents) {
                 return Some(config);
+            } else if let Ok(config) = serde_yaml::from_str(&contents) {
+                return Some(config);
             }
         }
         None
