@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use crate::ioutils::path_to_str;
 use crate::renderer::TemplateRenderer;
 use indexmap::IndexMap;
 use serde::Deserialize;
@@ -68,6 +69,8 @@ impl Config {
         if let Ok(contents) = std::fs::read_to_string(path) {
             if let Ok(config) = serde_json::from_str(&contents) {
                 return Some(config);
+            } else if let Ok(config) = serde_yaml::from_str(&contents) {
+                return Some(config);
             }
         }
         None
@@ -75,17 +78,13 @@ impl Config {
 
     pub fn load_config<P: AsRef<Path>>(template_root: P) -> Result<Config> {
         let template_root = template_root.as_ref().to_path_buf();
-        let template_dir = template_root
-            .to_str()
-            .to_owned()
-            .ok_or_else(|| Error::TemplateSourceInvalidError)?
-            .to_string();
+        let template_dir = path_to_str(&template_root)?.to_string();
         for config_file in CONFIG_LIST.iter() {
             if let Some(config) = Config::from_file(template_root.join(config_file)) {
                 return Ok(config);
             }
         }
-        Err(Error::ConfigError { template_dir, config_files: CONFIG_LIST.join(", ") })
+        Err(Error::ConfigNotFound { template_dir, config_files: CONFIG_LIST.join(", ") })
     }
 }
 

@@ -1,7 +1,4 @@
-use crate::{
-    config::Question,
-    error::{Error, Result},
-};
+use crate::{config::Question, error::Result};
 
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select};
 
@@ -9,7 +6,7 @@ pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
     if skip {
         return Ok(true);
     }
-    Confirm::new().with_prompt(prompt).default(false).interact().map_err(Error::IoError)
+    Ok(Confirm::new().with_prompt(prompt).default(false).interact()?)
 }
 
 pub fn prompt_multiple_choice(
@@ -34,8 +31,7 @@ pub fn prompt_multiple_choice(
         .with_prompt(prompt)
         .items(&choices)
         .defaults(&defaults)
-        .interact()
-        .map_err(Error::IoError)?;
+        .interact()?;
 
     let selected: Vec<serde_json::Value> =
         indices.iter().map(|&i| serde_json::Value::String(choices[i].clone())).collect();
@@ -48,11 +44,7 @@ pub fn prompt_boolean(
     prompt: String,
 ) -> Result<serde_json::Value> {
     let default_value = default_value.as_bool().unwrap();
-    let result = Confirm::new()
-        .with_prompt(prompt)
-        .default(default_value)
-        .interact()
-        .map_err(Error::IoError)?;
+    let result = Confirm::new().with_prompt(prompt).default(default_value).interact()?;
 
     Ok(serde_json::Value::Bool(result))
 }
@@ -72,8 +64,7 @@ pub fn prompt_single_choice(
         .with_prompt(prompt)
         .default(default_value)
         .items(&choices)
-        .interact()
-        .map_err(Error::IoError)?;
+        .interact()?;
 
     Ok(serde_json::Value::String(choices[selection].clone()))
 }
@@ -104,13 +95,9 @@ pub fn prompt_text(
             );
         }
 
-        password.interact().map_err(Error::IoError)?
+        password.interact()?
     } else {
-        Input::new()
-            .with_prompt(&prompt)
-            .default(default_str)
-            .interact_text()
-            .map_err(Error::IoError)?
+        Input::new().with_prompt(&prompt).default(default_str).interact_text()?
     };
 
     Ok(serde_json::Value::String(input))

@@ -221,8 +221,7 @@ pub fn run(args: Args) -> Result<()> {
 
     // Process template files
     for dir_entry in WalkDir::new(&template_root) {
-        let raw_entry = dir_entry.map_err(|e| Error::TemplateError(e.to_string()))?;
-        let template_entry = raw_entry.path().to_path_buf();
+        let template_entry = dir_entry?.path().to_path_buf();
         match processor.process(&template_entry) {
             Ok(file_operation) => {
                 let user_confirmed_overwrite = match &file_operation {

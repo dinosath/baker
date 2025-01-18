@@ -1,4 +1,4 @@
-use crate::error::{Error, Result};
+use crate::{error::Result, ioutils::path_to_str};
 use minijinja::Environment;
 use std::path::Path;
 
@@ -41,9 +41,9 @@ impl MiniJinjaRenderer {
         context: &serde_json::Value,
     ) -> Result<String> {
         let mut env = self.env.clone();
-        env.add_template("temp", template).map_err(Error::MinijinjaError)?;
-        let tmpl = env.get_template("temp").map_err(Error::MinijinjaError)?;
-        tmpl.render(context).map_err(Error::MinijinjaError)
+        env.add_template("temp", template)?;
+        let tmpl = env.get_template("temp")?;
+        Ok(tmpl.render(context)?)
     }
 }
 
@@ -62,25 +62,15 @@ impl TemplateRenderer for MiniJinjaRenderer {
         template_path: &Path,
         context: &serde_json::Value,
     ) -> Result<String> {
-        let path_str = template_path.to_str().ok_or_else(|| Error::ProcessError {
-            source_path: template_path.display().to_string(),
-            e: "Cannot convert source_path to string.".to_string(),
-        })?;
-
-        self.render_internal(path_str, context).map_err(|e| Error::ProcessError {
-            source_path: path_str.to_string(),
-            e: e.to_string(),
-        })
+        let path_str = path_to_str(template_path)?;
+        self.render_internal(path_str, context)
     }
     fn execute_expression(
         &self,
         expr_str: &str,
         context: &serde_json::Value,
     ) -> Result<bool> {
-        let expr = self.env.compile_expression(expr_str).map_err(|e| {
-            Error::ProcessError { source_path: "".to_string(), e: e.to_string() }
-        })?;
-        let result = expr.eval(context).unwrap();
-        Ok(result.is_true())
+        let expr = self.env.compile_expression(expr_str)?;
+        Ok(expr.eval(context)?.is_true())
     }
 }
