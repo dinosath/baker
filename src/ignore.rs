@@ -40,8 +40,11 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
     if let Ok(contents) = read_to_string(bakerignore_path) {
         for line in contents.lines() {
             let line = line.trim();
+            let path_to_ignored_pattern = template_root.join(line);
+            let path_str = path_to_str(&path_to_ignored_pattern)?;
+
             if !line.is_empty() && !line.starts_with('#') {
-                builder.add(Glob::new(template_root.join(line).to_str().unwrap())?);
+                builder.add(Glob::new(path_str)?);
             }
         }
     } else {
