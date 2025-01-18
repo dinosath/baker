@@ -1,4 +1,4 @@
-use crate::error::{Error, Result};
+use crate::{error::Result, ioutils::path_to_str};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use log::debug;
 use std::{fs::read_to_string, path::Path};
@@ -31,10 +31,9 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
 
     // Add default patterns first
     for pattern in DEFAULT_IGNORE_PATTERNS {
-        builder.add(
-            Glob::new(template_root.join(pattern).to_str().unwrap())
-                .map_err(Error::GlobSetParseError)?,
-        );
+        let path_to_ignored_pattern = template_root.join(pattern);
+        let path_str = path_to_str(&path_to_ignored_pattern)?;
+        builder.add(Glob::new(path_str)?);
     }
 
     // Then add patterns from .bakerignore if it exists
@@ -42,15 +41,12 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
         for line in contents.lines() {
             let line = line.trim();
             if !line.is_empty() && !line.starts_with('#') {
-                builder.add(
-                    Glob::new(template_root.join(line).to_str().unwrap())
-                        .map_err(Error::GlobSetParseError)?,
-                );
+                builder.add(Glob::new(template_root.join(line).to_str().unwrap())?);
             }
         }
     } else {
         debug!("No .bakerignore file found, using default patterns.");
     }
 
-    builder.build().map_err(Error::GlobSetParseError)
+    Ok(builder.build()?)
 }

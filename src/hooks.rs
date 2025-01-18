@@ -5,6 +5,7 @@ use std::process::{ChildStdout, Command, Stdio};
 
 use crate::dialoguer::confirm;
 use crate::error::{Error, Result};
+use crate::ioutils::path_to_str;
 
 /// Structure representing data passed to hook scripts.
 ///
@@ -72,11 +73,10 @@ pub fn run_hook<P: AsRef<Path>>(
 ) -> Result<Option<ChildStdout>> {
     let script_path = script_path.as_ref();
 
-    let output = Output {
-        template_dir: template_dir.as_ref().to_str().unwrap(),
-        output_dir: output_dir.as_ref().to_str().unwrap(),
-        answers,
-    };
+    let template_dir = path_to_str(&template_dir)?;
+    let output_dir = path_to_str(&output_dir)?;
+
+    let output = Output { template_dir, output_dir, answers };
 
     let output_data = serde_json::to_vec(&output).unwrap();
 
@@ -88,20 +88,22 @@ pub fn run_hook<P: AsRef<Path>>(
         .stdin(Stdio::piped())
         .stdout(if is_piped_stdout { Stdio::piped() } else { Stdio::inherit() })
         .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(Error::IoError)?;
+        .spawn()?;
 
     // Write context to stdin
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(&output_data).map_err(Error::IoError)?;
+        stdin.write_all(&output_data)?;
         stdin.write_all(b"\n")?;
     }
 
     // Wait for the process to complete
-    let status = child.wait().map_err(Error::IoError)?;
+    let status = child.wait()?;
 
     if !status.success() {
-        return Err(Error::HookExecutionError { status });
+        return Err(Error::HookExecutionError {
+            script: script_path.display().to_string(),
+            status,
+        });
     }
 
     Ok(child.stdout)

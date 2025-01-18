@@ -144,7 +144,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
                 format!("Directory '{}' already exists. Replace it?", repo_name),
             )?;
             if response {
-                fs::remove_dir_all(&clone_path).map_err(Error::IoError)?;
+                fs::remove_dir_all(&clone_path)?;
             } else {
                 debug!("Using existing directory '{}'.", clone_path.display());
                 return Ok(clone_path);

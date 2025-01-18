@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
+use crate::ioutils::path_to_str;
 use crate::renderer::TemplateRenderer;
 
 use super::operation::TemplateOperation;
@@ -127,13 +128,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         let rendered_entry = self.engine.render_path(template_entry, self.answers)?;
         let rendered_entry = rendered_entry.as_str();
 
-        if !self.has_valid_rendered_path_parts(
-            template_entry.to_str().ok_or_else(|| Error::ProcessError {
-                source_path: template_entry.display().to_string(),
-                e: "Invalid template path".to_string(),
-            })?,
-            rendered_entry,
-        ) {
+        if !self
+            .has_valid_rendered_path_parts(path_to_str(&template_entry)?, rendered_entry)
+        {
             return Err(Error::ProcessError {
                 source_path: rendered_entry.to_string(),
                 e: "The rendered path is not valid".to_string(),
@@ -206,8 +203,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         match (template_entry.is_file(), self.is_template_file(&template_entry)) {
             // Template file
             (true, true) => {
-                let template_content =
-                    fs::read_to_string(&template_entry).map_err(Error::IoError)?;
+                let template_content = fs::read_to_string(&template_entry)?;
                 let content = self.engine.render(&template_content, self.answers)?;
 
                 Ok(TemplateOperation::Write {
