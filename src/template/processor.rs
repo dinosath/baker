@@ -137,28 +137,29 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             });
         }
 
-        // Removes the `.baker.j2` suffix to create the target filename with its actual extension.
-        //
-        // The following lines check whether the `template_entry` is a template file by
-        // determining if its filename ends with a double extension that includes `.baker.j2`.
-        // For example:
-        // - `README.md.baker.j2` will be considered a template file because it has the double
-        //   extensions `.baker` and `.j2`.
-        // - `.dockerignore.baker.j2` will also be considered a template file since it includes
-        //   `.baker` and `.j2` as extensions.
-        //
-        // However, filenames like `template.j2` or `README.md` will not be considered
-        // template files because they lack a double extension with `.j2`.
-        //
-        let result = if self.is_template_file(template_entry) {
-            rendered_entry.strip_suffix(".baker.j2").unwrap_or(rendered_entry)
-        } else {
-            rendered_entry
-        };
-
         // Converts the `rendered_entry` slice to a `PathBuf` for easier manipulation
         // in subsequent operations.
-        Ok(PathBuf::from(result))
+        Ok(PathBuf::from(rendered_entry))
+    }
+
+    // Removes the `.baker.j2` suffix to create the target filename with its actual extension.
+    //
+    // The following lines check whether the `template_entry` is a template file by
+    // determining if its filename ends with a double extension that includes `.baker.j2`.
+    // For example:
+    // - `README.md.baker.j2` will be considered a template file because it has the double
+    //   extensions `.baker` and `.j2`.
+    // - `.dockerignore.baker.j2` will also be considered a template file since it includes
+    //   `.baker` and `.j2` as extensions.
+    //
+    // However, filenames like `template.j2` or `README.md` will not be considered
+    // template files because they lack a double extension with `.j2`.
+    //
+    fn remove_remplate_suffix(&self, target_path: &PathBuf) -> Result<PathBuf> {
+        let target_path_str = path_to_str(&target_path)?;
+        let target = target_path_str.strip_suffix(".baker.j2").unwrap_or(target_path_str);
+
+        Ok(target.into())
     }
 
     /// Constructs the `target_path` from `rendered_entry`, which represents the
@@ -200,14 +201,14 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         }
 
         // Handle different types of entries
-        match (template_entry.is_file(), self.is_template_file(&template_entry)) {
+        match (template_entry.is_file(), self.is_template_file(&rendered_entry)) {
             // Template file
             (true, true) => {
                 let template_content = fs::read_to_string(&template_entry)?;
                 let content = self.engine.render(&template_content, self.answers)?;
 
                 Ok(TemplateOperation::Write {
-                    target: target_path,
+                    target: self.remove_remplate_suffix(&target_path)?,
                     content,
                     target_exists,
                 })
@@ -587,23 +588,6 @@ mod tests {
     /// {"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"}
     ///
     #[test]
-    #[ignore = r#"because:
-
-        The template structure
-            template_root/
-                {{file_name}}
-        Expected output
-            output_root/
-                hello_world.txt
-        Answers are:
-            {"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"}
-        Actual result is:
-            Copy {
-                source: "/template_root/{{file_name}}",
-                target: "/output_root/hello_world.txt.baker.j2",
-                target_exists: false,
-            }
-    "#]
     fn it_works_9() {
         let answers =
             json!({"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"});
