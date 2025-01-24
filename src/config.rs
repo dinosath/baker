@@ -76,8 +76,7 @@ impl Config {
                 let content = std::fs::read_to_string(config_file_path)?;
                 let config: Config = match *config_file_name {
                     "baker.json" => serde_json::from_str(&content)?,
-                    "baker.yaml" => serde_yaml::from_str(&content)?,
-                    "baker.yml" => serde_yaml::from_str(&content)?,
+                    "baker.yaml" | "baker.yml" => serde_yaml::from_str(&content)?,
                     _ => unreachable!(),
                 };
 
