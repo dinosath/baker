@@ -3,6 +3,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("JSON parse error: {0}.")]
+    JSONParseError(#[from] serde_json::Error),
+
+    #[error("YAML parse error: {0}.")]
+    YAMLParseError(#[from] serde_yaml::Error),
     #[error("IO error: {0}.")]
     IoError(#[from] std::io::Error),
 
