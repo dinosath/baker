@@ -65,25 +65,26 @@ pub enum Config {
 }
 
 impl Config {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Option<Self> {
-        if let Ok(contents) = std::fs::read_to_string(path) {
-            if let Ok(config) = serde_json::from_str(&contents) {
-                return Some(config);
-            } else if let Ok(config) = serde_yaml::from_str(&contents) {
-                return Some(config);
-            }
-        }
-        None
-    }
-
-    pub fn load_config<P: AsRef<Path>>(template_root: P) -> Result<Config> {
+    pub fn load_config<P: AsRef<Path>>(template_root: P) -> Result<Self> {
         let template_root = template_root.as_ref().to_path_buf();
         let template_dir = path_to_str(&template_root)?.to_string();
-        for config_file in CONFIG_LIST.iter() {
-            if let Some(config) = Config::from_file(template_root.join(config_file)) {
+
+        for config_file_name in CONFIG_LIST.iter() {
+            let config_file_path = template_root.join(config_file_name);
+
+            if config_file_path.exists() {
+                let content = std::fs::read_to_string(config_file_path)?;
+                let config: Config = match *config_file_name {
+                    "baker.json" => serde_json::from_str(&content)?,
+                    "baker.yaml" => serde_yaml::from_str(&content)?,
+                    "baker.yml" => serde_yaml::from_str(&content)?,
+                    _ => unreachable!(),
+                };
+
                 return Ok(config);
             }
         }
+
         Err(Error::ConfigNotFound { template_dir, config_files: CONFIG_LIST.join(", ") })
     }
 }
