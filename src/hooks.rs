@@ -31,7 +31,7 @@ pub fn get_path_if_exists<P: AsRef<Path>>(path: P) -> String {
     if path.exists() {
         format!("{}\n", path.to_string_lossy())
     } else {
-        "".into()
+        String::new()
     }
 }
 
@@ -58,7 +58,7 @@ pub fn get_hook_files<P: AsRef<Path>>(template_dir: P) -> (PathBuf, PathBuf) {
 /// * `context` - Template context data
 ///
 /// # Returns
-/// * `BakerResult<()>` - Success or error status of hook execution
+/// * `Result<Option<ChildStdout>>` - Success or error status of hook execution
 ///
 /// # Notes
 /// - Hook scripts receive context data as JSON via stdin
@@ -78,7 +78,9 @@ pub fn run_hook<P: AsRef<Path>>(
 
     let output = Output { template_dir, output_dir, answers };
 
-    let output_data = serde_json::to_vec(&output).unwrap();
+    // Properly handle serialization errors
+    let output_data =
+        serde_json::to_vec(&output).map_err(|e| Error::JSONParseError(e))?;
 
     if !script_path.exists() {
         return Ok(None);

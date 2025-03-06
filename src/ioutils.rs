@@ -3,6 +3,13 @@ use std::path::{Path, PathBuf};
 use crate::error::{Error, Result};
 
 /// Ensures the output directory exists and is safe to write to.
+///
+/// # Arguments
+/// * `output_dir` - The directory path to check
+/// * `force` - Whether to allow overwriting an existing directory
+///
+/// # Returns
+/// * `Result<PathBuf>` - The validated output directory path
 pub fn get_output_dir<P: AsRef<Path>>(output_dir: P, force: bool) -> Result<PathBuf> {
     let output_dir = output_dir.as_ref();
     if output_dir.exists() && !force {
@@ -13,47 +20,66 @@ pub fn get_output_dir<P: AsRef<Path>>(output_dir: P, force: bool) -> Result<Path
     Ok(output_dir.to_path_buf())
 }
 
+/// Create directory and all parent directories if they don't exist.
+///
+/// # Arguments
+/// * `dest_path` - Directory path to create
+///
+/// # Returns
+/// * `Result<()>` - Success or error
 pub fn create_dir_all<P: AsRef<Path>>(dest_path: P) -> Result<()> {
-    let dest_path = dest_path.as_ref();
-    Ok(std::fs::create_dir_all(dest_path)?)
+    Ok(std::fs::create_dir_all(dest_path.as_ref())?)
 }
 
+/// Write content to a file, creating parent directories if needed.
+///
+/// # Arguments
+/// * `content` - Content to write to the file
+/// * `dest_path` - Path where to write the file
+///
+/// # Returns
+/// * `Result<()>` - Success or error
 pub fn write_file<P: AsRef<Path>>(content: &str, dest_path: P) -> Result<()> {
     let dest_path = dest_path.as_ref();
-    let base_path = std::env::current_dir().unwrap_or_default();
-    let abs_path = if dest_path.is_absolute() {
-        dest_path.to_path_buf()
-    } else {
-        base_path.join(dest_path)
-    };
 
-    if let Some(parent) = abs_path.parent() {
+    // Ensure parent directory exists
+    if let Some(parent) = dest_path.parent() {
         create_dir_all(parent)?;
     }
-    Ok(std::fs::write(abs_path, content)?)
+
+    Ok(std::fs::write(dest_path, content)?)
 }
 
+/// Copy a file from source to destination, creating parent directories if needed.
+///
+/// # Arguments
+/// * `source_path` - Source file path
+/// * `dest_path` - Destination file path
+///
+/// # Returns
+/// * `Result<()>` - Success or error
 pub fn copy_file<P: AsRef<Path>>(source_path: P, dest_path: P) -> Result<()> {
     let dest_path = dest_path.as_ref();
-    let source_path = source_path.as_ref();
-    let base_path = std::env::current_dir().unwrap_or_default();
-    let abs_dest = if dest_path.is_absolute() {
-        dest_path.to_path_buf()
-    } else {
-        base_path.join(dest_path)
-    };
 
-    if let Some(parent) = abs_dest.parent() {
+    // Ensure parent directory exists
+    if let Some(parent) = dest_path.parent() {
         create_dir_all(parent)?;
     }
-    Ok(std::fs::copy(source_path, abs_dest).map(|_| ())?)
+
+    Ok(std::fs::copy(source_path.as_ref(), dest_path).map(|_| ())?)
 }
 
+/// Parse a string into a JSON object.
+///
+/// # Arguments
+/// * `buf` - JSON string to parse
+///
+/// # Returns
+/// * `Result<serde_json::Map<String, serde_json::Value>>` - Parsed JSON object
 pub fn parse_string_to_json(
     buf: String,
 ) -> Result<serde_json::Map<String, serde_json::Value>> {
-    let value = serde_json::from_str(&buf)
-        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+    let value = serde_json::from_str(&buf)?;
 
     match value {
         serde_json::Value::Object(map) => Ok(map),
@@ -61,6 +87,13 @@ pub fn parse_string_to_json(
     }
 }
 
+/// Read content from a reader into a string.
+///
+/// # Arguments
+/// * `reader` - Anything that implements Read trait
+///
+/// # Returns
+/// * `Result<String>` - Content as string
 pub fn read_from(mut reader: impl std::io::Read) -> Result<String> {
     let mut buf = String::new();
     reader.read_to_string(&mut buf)?;
@@ -97,10 +130,10 @@ pub fn read_from(mut reader: impl std::io::Read) -> Result<String> {
 /// Returns an error if the path contains any invalid Unicode characters
 ///
 pub fn path_to_str<P: AsRef<Path> + ?Sized>(path: &P) -> Result<&str> {
-    Ok(path.as_ref().to_str().ok_or_else(|| {
-        anyhow::anyhow!(
+    path.as_ref().to_str().ok_or_else(|| {
+        Error::Other(anyhow::anyhow!(
             "Path '{}' contains invalid Unicode characters",
             path.as_ref().display()
-        )
-    })?)
+        ))
+    })
 }

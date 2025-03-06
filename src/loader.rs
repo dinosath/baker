@@ -31,21 +31,20 @@ impl TemplateSource {
     ///
     /// # Arguments
     /// * `s` - String containing path or git URL
+    /// * `skip_overwrite_check` - Whether to skip confirmation for overwriting existing directories
     ///
     /// # Returns
-    /// * `Option<Self>` - Some(TemplateSource) if valid input
+    /// * `Result<PathBuf>` - Path to the loaded template
     pub fn from_string(s: &str, skip_overwrite_check: bool) -> Result<PathBuf> {
         // First try to parse as URL
         let source = if let Ok(url) = Url::parse(s) {
             if url.scheme() == "https" || url.scheme() == "git" {
                 Self::Git(s.to_string())
             } else {
-                let path = PathBuf::from(s);
-                Self::FileSystem(path)
+                Self::FileSystem(PathBuf::from(s))
             }
         } else {
-            let path = PathBuf::from(s);
-            Self::FileSystem(path)
+            Self::FileSystem(PathBuf::from(s))
         };
 
         let loader: Box<dyn TemplateLoader> = match source {
@@ -63,23 +62,22 @@ impl TemplateSource {
 pub trait TemplateLoader {
     /// Loads a template from the given source.
     ///
-    /// # Arguments
-    /// * `source` - Source location of the template
-    ///
     /// # Returns
-    /// * `BakerResult<PathBuf>` - Path to the loaded template
-    fn load(&self) -> Result<PathBuf>; // was process
+    /// * `Result<PathBuf>` - Path to the loaded template
+    fn load(&self) -> Result<PathBuf>;
 }
 
 /// Loader for templates from the local filesystem.
 pub struct LocalLoader<P: AsRef<std::path::Path>> {
     path: P,
 }
+
 /// Loader for templates from git repositories.
 pub struct GitLoader<S: AsRef<str>> {
     repo: S,
     skip_overwrite_check: bool,
 }
+
 impl<P: AsRef<std::path::Path>> LocalLoader<P> {
     /// Creates a new LocalLoader instance.
     pub fn new(path: P) -> Self {
@@ -90,15 +88,8 @@ impl<P: AsRef<std::path::Path>> LocalLoader<P> {
 impl<P: AsRef<std::path::Path>> TemplateLoader for LocalLoader<P> {
     /// Loads a template from the local filesystem.
     ///
-    /// # Arguments
-    /// * `source` - Template source (must be FileSystem variant)
-    ///
     /// # Returns
-    /// * `BakerResult<PathBuf>` - Path to the template directory
-    ///
-    /// # Errors
-    /// * `BakerError::TemplateError` if path doesn't exist
-    /// * Panics if source is not FileSystem variant
+    /// * `Result<PathBuf>` - Path to the template directory
     fn load(&self) -> Result<PathBuf> {
         let path = self.path.as_ref();
         if !path.exists() {
@@ -121,18 +112,12 @@ impl<S: AsRef<str>> GitLoader<S> {
 impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
     /// Loads a template by cloning a git repository.
     ///
-    /// # Arguments
-    /// * `source` - Template source (must be Git variant)
-    ///
     /// # Returns
-    /// * `BakerResult<PathBuf>` - Path to the cloned repository
-    ///
-    /// # Errors
-    /// * `BakerError::TemplateError` if clone fails
+    /// * `Result<PathBuf>` - Path to the cloned repository
     fn load(&self) -> Result<PathBuf> {
         let repo_url = self.repo.as_ref();
 
-        debug!("Cloning repository '{}'.", repo_url);
+        debug!("Cloning repository '{}'", repo_url);
 
         let repo_name =
             repo_url.split('/').last().unwrap_or("template").trim_end_matches(".git");
@@ -146,12 +131,12 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             if response {
                 fs::remove_dir_all(&clone_path)?;
             } else {
-                debug!("Using existing directory '{}'.", clone_path.display());
+                debug!("Using existing directory '{}'", clone_path.display());
                 return Ok(clone_path);
             }
         }
 
-        debug!("Cloning to '{}'.", clone_path.display());
+        debug!("Cloning to '{}'", clone_path.display());
 
         // Set up authentication callbacks
         let mut callbacks = git2::RemoteCallbacks::new();
@@ -161,7 +146,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
                 None,
                 std::path::Path::new(&format!(
                     "{}/.ssh/id_rsa",
-                    std::env::var("HOME").unwrap()
+                    std::env::var("HOME").unwrap_or_default()
                 )),
                 None,
             )
