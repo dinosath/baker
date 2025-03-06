@@ -10,6 +10,9 @@ use crate::error::{Error, Result};
 ///
 /// # Returns
 /// * `Result<PathBuf>` - The validated output directory path
+///
+/// # Errors
+/// Returns `Error::OutputDirectoryExistsError` if the directory exists and `force` is false
 pub fn get_output_dir<P: AsRef<Path>>(output_dir: P, force: bool) -> Result<PathBuf> {
     let output_dir = output_dir.as_ref();
     if output_dir.exists() && !force {
@@ -27,8 +30,11 @@ pub fn get_output_dir<P: AsRef<Path>>(output_dir: P, force: bool) -> Result<Path
 ///
 /// # Returns
 /// * `Result<()>` - Success or error
+///
+/// # Errors
+/// Returns an error if directory creation fails
 pub fn create_dir_all<P: AsRef<Path>>(dest_path: P) -> Result<()> {
-    Ok(std::fs::create_dir_all(dest_path.as_ref())?)
+    std::fs::create_dir_all(dest_path.as_ref()).map_err(Error::from)
 }
 
 /// Write content to a file, creating parent directories if needed.
@@ -39,6 +45,9 @@ pub fn create_dir_all<P: AsRef<Path>>(dest_path: P) -> Result<()> {
 ///
 /// # Returns
 /// * `Result<()>` - Success or error
+///
+/// # Errors
+/// Returns an error if file writing fails
 pub fn write_file<P: AsRef<Path>>(content: &str, dest_path: P) -> Result<()> {
     let dest_path = dest_path.as_ref();
 
@@ -47,7 +56,7 @@ pub fn write_file<P: AsRef<Path>>(content: &str, dest_path: P) -> Result<()> {
         create_dir_all(parent)?;
     }
 
-    Ok(std::fs::write(dest_path, content)?)
+    std::fs::write(dest_path, content).map_err(Error::from)
 }
 
 /// Copy a file from source to destination, creating parent directories if needed.

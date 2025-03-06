@@ -21,11 +21,12 @@ pub struct Output<'a> {
 }
 
 /// Returns the file path as a string if the file exists; otherwise, returns an empty string.
+///
 /// # Arguments
 /// * `path` - Path to the file
 ///
 /// # Returns
-/// * `String` - The file path
+/// * `String` - The file path or empty string
 pub fn get_path_if_exists<P: AsRef<Path>>(path: P) -> String {
     let path = path.as_ref();
     if path.exists() {
@@ -43,9 +44,7 @@ pub fn get_path_if_exists<P: AsRef<Path>>(path: P) -> String {
 /// # Returns
 /// * `(PathBuf, PathBuf)` - Tuple containing paths to pre and post hook scripts
 pub fn get_hook_files<P: AsRef<Path>>(template_dir: P) -> (PathBuf, PathBuf) {
-    let template_dir = template_dir.as_ref();
-    let hooks_dir = template_dir.join("hooks");
-
+    let hooks_dir = template_dir.as_ref().join("hooks");
     (hooks_dir.join("pre"), hooks_dir.join("post"))
 }
 

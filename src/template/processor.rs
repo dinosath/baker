@@ -34,31 +34,30 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// with those of the original `template_entry`. The validation ensures no parts of the path
     /// are empty after rendering.
     ///
-    /// Example:
-    /// Given the following `template_entry`:
-    /// `template_root/{% if create_tests %}tests{% endif %}/`
-    /// And a corresponding `rendered_entry`:
-    /// `template_root/tests/`
-    //
-    /// The `has_valid_rendered_path_parts` function splits both paths by "/" and compares
-    /// their parts. If none of the parts are empty, the function concludes that the path
-    /// was correctly rendered and proceeds with processing.
+    /// # Arguments
+    /// * `template_path` - The original template path
+    /// * `rendered_path` - The path after rendering with template variables
     ///
-    /// However, if the `create_tests` value in `self.answers` is `false`, the rendered path
-    /// will look like this:
-    /// `template_root//`
+    /// # Returns
+    /// * `bool` - Whether the rendered path is valid
     ///
-    /// When compared with the original `template_entry`, `template_root/{% if create_tests %}tests{% endif %}/`,
-    /// the function detects that one of the parts is empty (due to the double "//").
-    /// In such cases, it considers the rendered path invalid and skips further processing.
+    /// # Examples
     ///
-    fn has_valid_rendered_path_parts<S: Into<String>>(
+    /// Valid case:
+    /// - Template path: `template_root/{% if create_tests %}tests{% endif %}/`
+    /// - Rendered path (when create_tests=true): `template_root/tests/`
+    ///
+    /// Invalid case:
+    /// - Template path: `template_root/{% if create_tests %}tests{% endif %}/`
+    /// - Rendered path (when create_tests=false): `template_root//` (contains empty part)
+    ///
+    fn has_valid_rendered_path_parts<S: AsRef<str>>(
         &self,
         template_path: S,
         rendered_path: S,
     ) -> bool {
-        let template_path = template_path.into();
-        let rendered_path = rendered_path.into();
+        let template_path = template_path.as_ref();
+        let rendered_path = rendered_path.as_ref();
         let template_path: Vec<&str> =
             template_path.split(std::path::MAIN_SEPARATOR).collect();
         let rendered_path: Vec<&str> =
@@ -77,59 +76,37 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
 
     /// Checks if the provided path is a Baker template file (with .baker.j2 extension)
     ///
-    /// This function analyzes the filename and its extensions to determine if the file
-    /// is a valid Baker template. A valid template must follow the `*.baker.j2` format.
-    ///
     /// # Arguments
-    ///
-    /// * `path` - A path to the file that implements AsRef<Path> trait
+    /// * `path` - A path to the file
     ///
     /// # Returns
-    ///
     /// * `true` - if the file has .baker.j2 extension
-    /// * `false` - in the following cases:
-    ///   - path doesn't contain a filename
-    ///   - filename cannot be converted to a string
-    ///   - file has fewer than two extensions
-    ///   - extensions don't match .baker.j2 format
+    /// * `false` - if the path is not a template file
     ///
     fn is_template_file<T: AsRef<Path>>(&self, path: T) -> bool {
         let path = path.as_ref();
-        let file_name = match path.file_name().and_then(|n| n.to_str()) {
-            Some(name) => name,
-            None => return false,
-        };
 
-        let parts: Vec<&str> = file_name.split('.').collect();
-
-        if parts.len() < 2 {
-            return false;
-        }
-
-        let prev = parts[parts.len() - 2];
-
-        prev == "baker" && parts.last() == Some(&"j2")
+        path.file_name().and_then(|n| n.to_str()).map_or(false, |file_name| {
+            let parts: Vec<&str> = file_name.split('.').collect();
+            parts.len() >= 2
+                && parts[parts.len() - 2] == "baker"
+                && parts.last() == Some(&"j2")
+        })
     }
 
-    /// The `template_entry` file or directory name may contain a template string.
-    /// This allows the system to determine whether to create a file or directory and
-    /// how to resolve its name based on provided template data.
+    /// Renders a template entry path with template variables.
     ///
-    /// For example, if the file or directory name contains the string:
-    /// `{{filename}}.txt`, it will be rendered as `my_file_name.txt`
-    /// if the value for "filename" in `self.answers` is "my_file_name".
+    /// # Arguments
+    /// * `template_entry` - The template path to render
     ///
-    /// Additionally, conditions can be applied. For instance, if the file or directory name
-    /// has an empty value, it will not be created.
-    /// Example: `{% if create_tests %}tests{% endif %}/` will create the directory only
-    /// if `create_tests` in `self.answers` evaluates to true.
+    /// # Returns
+    /// * `Result<PathBuf>` - The rendered path or an error
     ///
     fn render_template_entry(&self, template_entry: &PathBuf) -> Result<PathBuf> {
         let rendered_entry = self.engine.render_path(template_entry, self.answers)?;
-        let rendered_entry = rendered_entry.as_str();
 
         if !self
-            .has_valid_rendered_path_parts(path_to_str(&template_entry)?, rendered_entry)
+            .has_valid_rendered_path_parts(path_to_str(template_entry)?, &rendered_entry)
         {
             return Err(Error::ProcessError {
                 source_path: rendered_entry.to_string(),
@@ -137,43 +114,32 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             });
         }
 
-        // Converts the `rendered_entry` slice to a `PathBuf` for easier manipulation
-        // in subsequent operations.
         Ok(PathBuf::from(rendered_entry))
     }
 
-    // Removes the `.baker.j2` suffix to create the target filename with its actual extension.
-    //
-    // The following lines check whether the `template_entry` is a template file by
-    // determining if its filename ends with a double extension that includes `.baker.j2`.
-    // For example:
-    // - `README.md.baker.j2` will be considered a template file because it has the double
-    //   extensions `.baker` and `.j2`.
-    // - `.dockerignore.baker.j2` will also be considered a template file since it includes
-    //   `.baker` and `.j2` as extensions.
-    //
-    // However, filenames like `template.j2` or `README.md` will not be considered
-    // template files because they lack a double extension with `.j2`.
-    //
-    fn remove_remplate_suffix(&self, target_path: &PathBuf) -> Result<PathBuf> {
-        let target_path_str = path_to_str(&target_path)?;
+    /// Removes the `.baker.j2` suffix from a template file path.
+    ///
+    /// # Arguments
+    /// * `target_path` - Path with possible template suffix
+    ///
+    /// # Returns
+    /// * `Result<PathBuf>` - Path with suffix removed
+    ///
+    fn remove_template_suffix(&self, target_path: &PathBuf) -> Result<PathBuf> {
+        let target_path_str = path_to_str(target_path)?;
         let target = target_path_str.strip_suffix(".baker.j2").unwrap_or(target_path_str);
 
-        Ok(target.into())
+        Ok(PathBuf::from(target))
     }
 
-    /// Constructs the `target_path` from `rendered_entry`, which represents the
-    /// actual path to the file or directory that will be created in `output_root`.
-    //
-    /// The `target_path` is built by replacing the `template_root` prefix with the `output_root` prefix.
-    /// Example:
-    /// If `rendered_entry` is:
-    /// `PathBuf("template_root/tests/__init__.py")`
+    /// Constructs the target path for a rendered entry.
     ///
-    /// The `template_root` prefix is replaced with `output_root`, resulting in:
-    /// `PathBuf("output_root/tests/__init__.py")`
+    /// # Arguments
+    /// * `rendered_entry` - The rendered entry path
+    /// * `template_entry` - The original template entry path
     ///
-    /// Here, `output_root` is the directory where the rendered file or directory will be saved.
+    /// # Returns
+    /// * `Result<PathBuf>` - The target path in the output directory
     ///
     fn get_target_path(
         &self,
@@ -189,6 +155,14 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         Ok(self.output_root.as_ref().join(target_path))
     }
 
+    /// Processes a template entry and determines the appropriate operation.
+    ///
+    /// # Arguments
+    /// * `template_entry` - The template entry to process
+    ///
+    /// # Returns
+    /// * `Result<TemplateOperation>` - The operation to perform
+    ///
     pub fn process(&self, template_entry: P) -> Result<TemplateOperation> {
         let template_entry = template_entry.as_ref().to_path_buf();
         let rendered_entry = self.render_template_entry(&template_entry)?;
@@ -208,7 +182,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 let content = self.engine.render(&template_content, self.answers)?;
 
                 Ok(TemplateOperation::Write {
-                    target: self.remove_remplate_suffix(&target_path)?,
+                    target: self.remove_template_suffix(&target_path)?,
                     content,
                     target_exists,
                 })

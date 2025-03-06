@@ -4,29 +4,29 @@ use thiserror::Error;
 /// Represents all possible errors that can occur in Baker
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("JSON parse error: {0}")]
+    #[error("Failed to parse JSON: {0}")]
     JSONParseError(#[from] serde_json::Error),
 
-    #[error("YAML parse error: {0}")]
+    #[error("Failed to parse YAML: {0}")]
     YAMLParseError(#[from] serde_yaml::Error),
 
-    #[error("IO error: {0}")]
+    #[error("IO operation failed: {0}")]
     IoError(#[from] std::io::Error),
 
-    #[error("Failed to parse .bakerignore file: {0}")]
+    #[error("Failed to parse glob pattern in .bakerignore file: {0}")]
     GlobSetParseError(#[from] globset::Error),
 
-    #[error("Git repository error: {0}")]
+    #[error("Git operation failed: {0}")]
     Git2Error(#[from] git2::Error),
 
-    #[error("Template rendering error: {0}")]
+    #[error("Template rendering failed: {0}")]
     MinijinjaError(#[from] minijinja::Error),
 
-    #[error("File system traversal error: {0}")]
+    #[error("File system traversal failed: {0}")]
     WalkdirError(#[from] walkdir::Error),
 
     #[error(
-        "Configuration file not found in '{template_dir}'. Searched for: {config_files}"
+        "Configuration file not found in '{template_dir}'. Expected one of: {config_files}"
     )]
     ConfigNotFound { template_dir: String, config_files: String },
 
@@ -41,10 +41,10 @@ pub enum Error {
     #[error("Template directory '{template_dir}' does not exist")]
     TemplateDoesNotExistsError { template_dir: String },
 
-    #[error("Cannot process the source path: '{source_path}': {e}")]
+    #[error("Cannot process path '{source_path}': {e}")]
     ProcessError { source_path: String, e: String },
 
-    #[error(transparent)]
+    #[error("{0}")]
     Other(#[from] anyhow::Error),
 }
 

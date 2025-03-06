@@ -9,6 +9,13 @@ pub enum TemplateOperation {
 }
 
 impl TemplateOperation {
+    /// Gets a message describing the operation and its status.
+    ///
+    /// # Arguments
+    /// * `user_confirmed_overwrite` - Whether the user has confirmed overwriting existing files
+    ///
+    /// # Returns
+    /// * `String` - A descriptive message about the operation
     pub fn get_message(&self, user_confirmed_overwrite: bool) -> String {
         match self {
             TemplateOperation::Copy { source, target, target_exists } => {
@@ -42,7 +49,7 @@ impl TemplateOperation {
                 }
             }
 
-            TemplateOperation::Write { target, content: _, target_exists } => {
+            TemplateOperation::Write { target, target_exists, .. } => {
                 if *target_exists {
                     if user_confirmed_overwrite {
                         format!(
