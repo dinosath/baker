@@ -367,20 +367,50 @@ With this configuration, Baker will:
 1. Look for a pre-hook script at `template_root/hooks/setup-environment`
 2. Look for a post-hook script at `template_root/hooks/finalize-project`
 
-This is useful when:
+Hook filenames also support template strings, which can be used to create platform-specific hooks:
 
-- You want more descriptive hook filenames
-- You want to specify hook extensions (e.g., `.sh`, `.py`, `.exe` etc.)
-- You're integrating with existing scripts that follow a different naming convention
+```yaml
+schemaVersion: v1
 
-The warning prompt will show the actual filenames:
+questions:
+  license:
+    type: str
+    help: "Please select a licence for {{platform.os}}"
+    default: MIT
+    choices:
+      - MIT
+      - BSD
+      - GPLv3
+      - Apache Software License 2.0
+      - Not open source
+
+pre_hook_filename: "{{platform.family}}/pre"
+post_hook_filename: "{{platform.family}}/post"
+```
+
+This configuration allows you to organize hooks by platform. For example:
 
 ```
-WARNING: This template contains the following hooks that will execute commands on your system:
-examples/hooks/hooks/setup-environment
-examples/hooks/hooks/finalize-project
-Do you want to run these hooks? [y/N]
+hooks/
+├── unix/
+│   ├── pre
+│   └── post
+└── windows/
+    ├── pre
+    └── post
 ```
+
+Baker will automatically select the appropriate hook based on the current platform.
+
+### Available Platform Variables
+
+Baker provides these platform variables that can be used in templates and hook filenames:
+
+- `platform.os` - Operating system name (e.g., "linux", "macos", "windows")
+- `platform.family` - OS family (e.g., "unix", "windows")
+- `platform.arch` - CPU architecture (e.g., "x86_64", "aarch64")
+
+You can use these variables in any template, including hook filenames, questions, help text, defaults, etc.
 
 ## Questions
 
