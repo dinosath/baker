@@ -64,16 +64,6 @@ questions:
     type: bool
     help: Will your project include tests?
     default: true
-
-  pre_hook_filename:
-    type: str
-    help: Name of the pre-hook script file
-    default: "pre"
-
-  post_hook_filename:
-    type: str
-    help: Name of the post-hook script file
-    default: "post"
 ```
 
 The values of the `help` and `default` keys can include templates for value substitution. Each subsequent question has access to the answers of the previous ones as demonstrated in `project_author` and `project_slug`.
