@@ -55,6 +55,18 @@ pub struct Question {
 pub struct ConfigV1 {
     #[serde(default)]
     pub questions: IndexMap<String, Question>,
+    #[serde(default = "get_default_post_hook_filename")]
+    pub post_hook_filename: String,
+    #[serde(default = "get_default_pre_hook_filename")]
+    pub pre_hook_filename: String,
+}
+
+fn get_default_post_hook_filename() -> String {
+    "post".to_string()
+}
+
+fn get_default_pre_hook_filename() -> String {
+    "pre".to_string()
 }
 
 #[derive(Debug, Deserialize)]

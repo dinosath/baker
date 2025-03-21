@@ -157,9 +157,15 @@ pub fn run(args: Args) -> Result<()> {
         &template_root,
         args.skip_confirms.contains(&crate::cli::SkipConfirm::All)
             || args.skip_confirms.contains(&crate::cli::SkipConfirm::Hooks),
+        &config.pre_hook_filename,
+        &config.post_hook_filename,
     )?;
 
-    let (pre_hook_file, post_hook_file) = get_hook_files(&template_root);
+    let (pre_hook_file, post_hook_file) = get_hook_files(
+        &template_root,
+        &config.pre_hook_filename,
+        &config.post_hook_filename,
+    );
 
     // Execute pre-generation hook
     let pre_hook_stdout = if execute_hooks && pre_hook_file.exists() {

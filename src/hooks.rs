@@ -42,11 +42,15 @@ pub fn get_path_if_exists<P: AsRef<Path>>(path: P) -> String {
 ///
 /// # Returns
 /// * `(PathBuf, PathBuf)` - Tuple containing paths to pre and post hook scripts
-pub fn get_hook_files<P: AsRef<Path>>(template_dir: P) -> (PathBuf, PathBuf) {
+pub fn get_hook_files<P: AsRef<Path>>(
+    template_dir: P,
+    pre_hook_filename: &str,
+    post_hook_filename: &str,
+) -> (PathBuf, PathBuf) {
     let template_dir = template_dir.as_ref();
     let hooks_dir = template_dir.join("hooks");
 
-    (hooks_dir.join("pre"), hooks_dir.join("post"))
+    (hooks_dir.join(pre_hook_filename), hooks_dir.join(post_hook_filename))
 }
 
 /// Executes a hook script with the provided context.
@@ -112,8 +116,11 @@ pub fn run_hook<P: AsRef<Path>>(
 pub fn confirm_hook_execution<P: AsRef<Path>>(
     template_dir: P,
     skip_hooks_check: bool,
+    pre_hook_filename: &str,
+    post_hook_filename: &str,
 ) -> Result<bool> {
-    let (pre_hook_file, post_hook_file) = get_hook_files(template_dir);
+    let (pre_hook_file, post_hook_file) =
+        get_hook_files(template_dir, pre_hook_filename, post_hook_filename);
     if pre_hook_file.exists() || post_hook_file.exists() {
         Ok(confirm(
             skip_hooks_check,

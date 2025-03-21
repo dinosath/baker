@@ -78,24 +78,22 @@ pub fn read_from(mut reader: impl std::io::Read) -> Result<String> {
 ///
 /// # Examples
 /// ```
-/// use std::path::Path;
-/// use std::ffi::OsStr;
-/// use std::os::unix::ffi::OsStrExt;
 /// use baker::ioutils::path_to_str;
+/// use std::path::Path;
 ///
-/// let valid_path = Path::new("/tmp/test.txt");
-/// let str_path = path_to_str(valid_path).unwrap();
-/// assert_eq!(str_path, "/tmp/test.txt");
+/// let path = Path::new("test");
+/// assert_eq!(path_to_str(path).unwrap(), "test");
 ///
-/// // Path with invalid Unicode will return an error
-/// let invalid_bytes = vec![0x2F, 0x74, 0x6D, 0x70, 0xFF, 0xFF];  // "/tmp��"
-/// let invalid_path = Path::new(OsStr::from_bytes(&invalid_bytes));
-/// assert!(path_to_str(invalid_path).is_err());
+/// // Invalid paths will return an error
+/// #[cfg(unix)]
+/// {
+///     use std::os::unix::ffi::OsStrExt;
+///     use std::ffi::OsStr;
+///     let invalid_bytes = [0x80, 0x00];
+///     let invalid_path = Path::new(OsStr::from_bytes(&invalid_bytes));
+///     assert!(path_to_str(invalid_path).is_err());
+/// }
 /// ```
-///
-/// # Errors
-/// Returns an error if the path contains any invalid Unicode characters
-///
 pub fn path_to_str<P: AsRef<Path> + ?Sized>(path: &P) -> Result<&str> {
     Ok(path.as_ref().to_str().ok_or_else(|| {
         anyhow::anyhow!(
