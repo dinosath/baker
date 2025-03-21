@@ -153,13 +153,19 @@ pub fn run(args: Args) -> Result<()> {
 
     let Config::V1(config) = config;
 
+    let pre_hook_filename = engine.render(&config.pre_hook_filename, &json!({}))?;
+    let post_hook_filename = engine.render(&config.post_hook_filename, &json!({}))?;
+
     let execute_hooks = confirm_hook_execution(
         &template_root,
         args.skip_confirms.contains(&crate::cli::SkipConfirm::All)
             || args.skip_confirms.contains(&crate::cli::SkipConfirm::Hooks),
+        &pre_hook_filename,
+        &post_hook_filename,
     )?;
 
-    let (pre_hook_file, post_hook_file) = get_hook_files(&template_root);
+    let (pre_hook_file, post_hook_file) =
+        get_hook_files(&template_root, &pre_hook_filename, &post_hook_filename);
 
     // Execute pre-generation hook
     let pre_hook_stdout = if execute_hooks && pre_hook_file.exists() {
