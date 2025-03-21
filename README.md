@@ -64,6 +64,16 @@ questions:
     type: bool
     help: Will your project include tests?
     default: true
+
+  pre_hook_filename:
+    type: str
+    help: Name of the pre-hook script file
+    default: "pre"
+
+  post_hook_filename:
+    type: str
+    help: Name of the post-hook script file
+    default: "post"
 ```
 
 The values of the `help` and `default` keys can include templates for value substitution. Each subsequent question has access to the answers of the previous ones as demonstrated in `project_author` and `project_slug`.
@@ -268,8 +278,8 @@ Baker executes hooks as separate processes, which makes them language-independen
 
 For a hook to be executed, it must meet two requirements:
 
-1. It must be located in the template directory `template_root/hooks/` and named either `post` or `pre`.
-2. It must be an executable file (`chmod +x template_root/hooks/post`).
+1. It must be located in the template directory `template_root/hooks/` and named according to the `pre_hook_filename` or `post_hook_filename` specified in the configuration.
+2. It must be an executable file (`chmod +x template_root/hooks/<hook_filename>`).
 
 When generating a project containing a hook, Baker will issue a warning:
 
@@ -347,7 +357,40 @@ graph LR
     class stdin2,stdin3,stdout1,stdout3 stream
 ```
 
-There is an example [example](examples/hooks) of a simple template using a post-hook: it reads the user's response for the selected license, retrieves the corresponding license content from the available license files, and writes it to the target directory as the `LICENSE` file.
+### Customizing Hook Filenames
+
+By default, Baker looks for hook scripts named `pre` and `post` in the `hooks` directory of your template. You can customize these filenames using the `pre_hook_filename` and `post_hook_filename` configuration options in your `baker.yaml` file:
+
+```yaml
+schemaVersion: v1
+
+questions:
+  # Your regular questions here...
+
+# Custom hook filenames
+pre_hook_filename: "setup-environment"
+post_hook_filename: "finalize-project"
+```
+
+With this configuration, Baker will:
+
+1. Look for a pre-hook script at `template_root/hooks/setup-environment`
+2. Look for a post-hook script at `template_root/hooks/finalize-project`
+
+This is useful when:
+
+- You want more descriptive hook filenames
+- You need different hooks for different templates in the same repository
+- You're integrating with existing scripts that follow a different naming convention
+
+The warning prompt will show the actual filenames:
+
+```
+WARNING: This template contains the following hooks that will execute commands on your system:
+examples/hooks/hooks/setup-environment
+examples/hooks/hooks/finalize-project
+Do you want to run these hooks? [y/N]
+```
 
 ## Questions
 
