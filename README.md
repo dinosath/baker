@@ -370,7 +370,7 @@ With this configuration, Baker will:
 This is useful when:
 
 - You want more descriptive hook filenames
-- You need different hooks for different templates in the same repository
+- You want to specify hook extensions (e.g., `.sh`, `.py`, `.exe` etc.)
 - You're integrating with existing scripts that follow a different naming convention
 
 The warning prompt will show the actual filenames:
