@@ -93,14 +93,6 @@ pub fn read_from(mut reader: impl std::io::Read) -> Result<String> {
 ///     let invalid_path = Path::new(OsStr::from_bytes(&invalid_bytes));
 ///     assert!(path_to_str(invalid_path).is_err());
 /// }
-///
-/// #[cfg(windows)]
-/// {
-///     // On Windows, create an invalid path with characters
-///     // not allowed in Windows filenames
-///     let invalid_path = Path::new("test\0file");  // Null character makes this invalid
-///     assert!(path_to_str(invalid_path).is_err());
-/// }
 /// ```
 pub fn path_to_str<P: AsRef<Path> + ?Sized>(path: &P) -> Result<&str> {
     Ok(path.as_ref().to_str().ok_or_else(|| {
