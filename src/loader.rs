@@ -137,6 +137,9 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
         }
 
         debug!("Cloning to '{}'", clone_path.display());
+        let home = std::env::var("HOME").map_err(|e| {
+            Error::Other(anyhow::anyhow!("Failed to get HOME directory: {}", e))
+        })?;
 
         // Set up authentication callbacks
         let mut callbacks = git2::RemoteCallbacks::new();
@@ -144,10 +147,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             git2::Cred::ssh_key(
                 username_from_url.unwrap_or("git"),
                 None,
-                std::path::Path::new(&format!(
-                    "{}/.ssh/id_rsa",
-                    std::env::var("HOME").unwrap_or_default()
-                )),
+                std::path::Path::new(&format!("{}/.ssh/id_rsa", home)),
                 None,
             )
         });
