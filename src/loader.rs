@@ -1,7 +1,7 @@
 use crate::dialoguer::confirm;
 use crate::error::{Error, Result};
 use git2;
-use log::debug;
+use log;
 use std::fs;
 use std::path::PathBuf;
 use url::Url;
@@ -117,7 +117,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
     fn load(&self) -> Result<PathBuf> {
         let repo_url = self.repo.as_ref();
 
-        debug!("Cloning repository '{}'", repo_url);
+        log::debug!("Cloning repository '{}'", repo_url);
 
         let repo_name =
             repo_url.split('/').last().unwrap_or("template").trim_end_matches(".git");
@@ -131,12 +131,12 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             if response {
                 fs::remove_dir_all(&clone_path)?;
             } else {
-                debug!("Using existing directory '{}'", clone_path.display());
+                log::debug!("Using existing directory '{}'", clone_path.display());
                 return Ok(clone_path);
             }
         }
 
-        debug!("Cloning to '{}'", clone_path.display());
+        log::debug!("Cloning to '{}'", clone_path.display());
         let home = std::env::var("HOME").map_err(|e| {
             Error::Other(anyhow::anyhow!("Failed to get HOME directory: {}", e))
         })?;

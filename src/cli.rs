@@ -169,6 +169,7 @@ pub fn run(args: Args) -> Result<()> {
 
     // Execute pre-generation hook
     let pre_hook_stdout = if execute_hooks && pre_hook_file.exists() {
+        log::debug!("Executing pre-hook script: {}", pre_hook_file.display());
         run_hook(&template_root, &output_root, &pre_hook_file, None, true)?
     } else {
         None
@@ -278,6 +279,7 @@ pub fn run(args: Args) -> Result<()> {
 
     // Execute post-generation hook
     if execute_hooks && post_hook_file.exists() {
+        log::debug!("Executing post-hook script: {}", post_hook_file.display());
         run_hook(&template_root, &output_root, &post_hook_file, Some(&answers), false)?;
     }
 

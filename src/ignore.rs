@@ -1,6 +1,6 @@
 use crate::{error::Result, ioutils::path_to_str};
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use log::debug;
+use log;
 use std::{fs::read_to_string, path::Path};
 
 /// Default patterns to always ignore during template processing
@@ -48,7 +48,7 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
             }
         }
     } else {
-        debug!("No .bakerignore file found, using default patterns.");
+        log::debug!("No .bakerignore file found, using default patterns.");
     }
 
     Ok(builder.build()?)
