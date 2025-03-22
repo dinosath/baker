@@ -5,7 +5,7 @@ use crate::{
         prompt_text,
     },
     error::{Error, Result},
-    hooks::{confirm_hook_execution, get_hook_files, run_hook},
+    hooks::{confirm_hook_execution, get_hook_files, run_hook, safe_read_from},
     ignore::parse_bakerignore_file,
     ioutils::{
         copy_file, create_dir_all, get_output_dir, parse_string_to_json, read_from,
@@ -175,19 +175,21 @@ pub fn run(args: Args) -> Result<()> {
         None
     };
 
-    // Retrieves answers from the `--answers`, stdin, or `pre_hook`
-    let buf = if let Some(answers) = args.answers {
-        Some(if answers == "-" { read_from(std::io::stdin())? } else { answers })
+    // Retrieves answers and parses them directly to avoid type incompatibility
+    let mut answers = if let Some(answers_arg) = args.answers {
+        // From command line argument
+        let answers_str =
+            if answers_arg == "-" { read_from(std::io::stdin())? } else { answers_arg };
+        parse_string_to_json(answers_str)?
     } else if let Some(pre_hook_stdout) = pre_hook_stdout {
-        Some(read_from(pre_hook_stdout)?)
+        // From pre-hook output
+        if let serde_json::Value::Object(map) = safe_read_from(pre_hook_stdout) {
+            map
+        } else {
+            serde_json::Map::new()
+        }
     } else {
-        None
-    };
-
-    // Parses retrieved answers to JSON or returns the default map
-    let mut answers = if let Some(buf) = buf {
-        parse_string_to_json(buf)?
-    } else {
+        // Default empty map
         serde_json::Map::new()
     };
 

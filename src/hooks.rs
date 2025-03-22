@@ -54,6 +54,19 @@ pub fn get_hook_files<P: AsRef<Path>>(
     (hooks_dir.join(pre_hook_filename), hooks_dir.join(post_hook_filename))
 }
 
+/// Safely read JSON data from hook stdout
+/// Returns empty JSON object if parsing fails
+pub fn safe_read_from(stdout: ChildStdout) -> serde_json::Value {
+    let reader = std::io::BufReader::new(stdout);
+    match serde_json::from_reader(reader) {
+        Ok(data) => data,
+        Err(e) => {
+            log::warn!("Failed to parse hook output as JSON: {}", e);
+            serde_json::json!({})
+        }
+    }
+}
+
 /// Executes a hook script with the provided context.
 ///
 /// # Arguments
