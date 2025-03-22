@@ -86,7 +86,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     fn is_template_file<T: AsRef<Path>>(&self, path: T) -> bool {
         let path = path.as_ref();
 
-        path.file_name().and_then(|n| n.to_str()).map_or(false, |file_name| {
+        path.file_name().and_then(|n| n.to_str()).is_some_and(|file_name| {
             let parts: Vec<&str> = file_name.split('.').collect();
             parts.len() >= 2
                 && parts[parts.len() - 2] == "baker"

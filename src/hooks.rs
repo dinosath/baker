@@ -85,7 +85,7 @@ pub fn run_hook<P: AsRef<Path>>(
 
     // Properly handle serialization errors
     let output_data =
-        serde_json::to_vec(&output).map_err(|e| Error::JSONParseError(e))?;
+        serde_json::to_vec(&output).map_err(Error::JSONParseError)?;
 
     if !script_path.exists() {
         return Ok(None);
