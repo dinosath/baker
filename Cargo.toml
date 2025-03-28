@@ -19,7 +19,7 @@ indexmap = { version = "2.7", features = ["serde"] }
 minijinja = { version = "2.5", features = ["builtins"] }
 globset = "0.4"
 walkdir = "2.5"
-git2 = "0.20"
+git2 = { version = "0.20", features = ["vendored-openssl", "vendored-libgit2"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_yaml = "0.9"
@@ -27,6 +27,7 @@ url = "2.5"
 dialoguer = { version = "0.10.0", features = ["fuzzy-select"] }
 anyhow = { version = "1.0.95" }
 openssl = { version = "0.10", features = ["vendored"] }
+libz-sys = { version = "1.1", features = ["static"] }
 
 [dev-dependencies]
 tempfile = "3.15"
