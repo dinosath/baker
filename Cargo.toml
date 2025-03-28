@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Ali Aliyev <ali@aliev.me>"]
 repository = "https://github.com/aliev/baker"
+homepage = "https://github.com/aliev/baker"
 categories = ["command-line-utilities"]
 description = "baker: project scaffolding tool"
 license = "MIT"
@@ -28,3 +29,8 @@ anyhow = { version = "1.0.95" }
 
 [dev-dependencies]
 tempfile = "3.15"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
