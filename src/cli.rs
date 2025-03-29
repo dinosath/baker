@@ -5,7 +5,7 @@ use crate::{
         prompt_text,
     },
     error::{Error, Result},
-    hooks::{confirm_hook_execution, get_hook_files, run_hook, safe_read_from},
+    hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,
     ioutils::{
         copy_file, create_dir_all, get_output_dir, parse_string_to_json, read_from,
@@ -169,8 +169,8 @@ pub fn run(args: Args) -> Result<()> {
 
     // Execute pre-generation hook
     let pre_hook_stdout = if execute_hooks && pre_hook_file.exists() {
-        log::debug!("Executing pre-hook script: {}", pre_hook_file.display());
-        run_hook(&template_root, &output_root, &pre_hook_file, None, true)?
+        log::debug!("Executing pre-hook: {}", pre_hook_file.display());
+        run_hook(&template_root, &output_root, &pre_hook_file, None)?
     } else {
         None
     };
@@ -182,14 +182,25 @@ pub fn run(args: Args) -> Result<()> {
             if answers_arg == "-" { read_from(std::io::stdin())? } else { answers_arg };
         parse_string_to_json(answers_str)?
     } else if let Some(pre_hook_stdout) = pre_hook_stdout {
-        // From pre-hook output
-        if let serde_json::Value::Object(map) = safe_read_from(pre_hook_stdout) {
-            map
-        } else {
-            serde_json::Map::new()
-        }
+        // Read and print the raw output
+        let result = read_from(pre_hook_stdout).unwrap_or_default();
+
+        log::debug!(
+            "Pre-hook stdout content (attempting to parse as JSON answers): {}",
+            result
+        );
+
+        serde_json::from_str::<serde_json::Value>(&result).map_or_else(
+            |e| {
+                log::warn!("Failed to parse hook output as JSON: {}", e);
+                serde_json::Map::new()
+            },
+            |value| match value {
+                serde_json::Value::Object(map) => map,
+                _ => serde_json::Map::new(),
+            },
+        )
     } else {
-        // Default empty map
         serde_json::Map::new()
     };
 
@@ -281,8 +292,14 @@ pub fn run(args: Args) -> Result<()> {
 
     // Execute post-generation hook
     if execute_hooks && post_hook_file.exists() {
-        log::debug!("Executing post-hook script: {}", post_hook_file.display());
-        run_hook(&template_root, &output_root, &post_hook_file, Some(&answers), false)?;
+        log::debug!("Executing post-hook: {}", post_hook_file.display());
+        let post_hook_stdout =
+            run_hook(&template_root, &output_root, &post_hook_file, Some(&answers))?;
+
+        if let Some(post_hook_stdout) = post_hook_stdout {
+            let result = read_from(post_hook_stdout).unwrap_or_default();
+            log::debug!("Post-hook stdout content: {}", result);
+        }
     }
 
     println!("Template generation completed successfully in {}.", output_root.display());

@@ -54,19 +54,6 @@ pub fn get_hook_files<P: AsRef<Path>>(
     (hooks_dir.join(pre_hook_filename), hooks_dir.join(post_hook_filename))
 }
 
-/// Safely read JSON data from hook stdout
-/// Returns empty JSON object if parsing fails
-pub fn safe_read_from(stdout: ChildStdout) -> serde_json::Value {
-    let reader = std::io::BufReader::new(stdout);
-    match serde_json::from_reader(reader) {
-        Ok(data) => data,
-        Err(e) => {
-            log::warn!("Failed to parse hook output as JSON: {}", e);
-            serde_json::json!({})
-        }
-    }
-}
-
 /// Executes a hook script with the provided context.
 ///
 /// # Arguments
@@ -85,11 +72,10 @@ pub fn safe_read_from(stdout: ChildStdout) -> serde_json::Value {
 pub fn run_hook<P: AsRef<Path>>(
     template_dir: P,
     output_dir: P,
-    script_path: P,
+    hook_path: P,
     answers: Option<&serde_json::Value>,
-    is_piped_stdout: bool,
 ) -> Result<Option<ChildStdout>> {
-    let script_path = script_path.as_ref();
+    let hook_path = hook_path.as_ref();
 
     let template_dir = path_to_str(&template_dir)?;
     let output_dir = path_to_str(&output_dir)?;
@@ -99,13 +85,13 @@ pub fn run_hook<P: AsRef<Path>>(
     // Properly handle serialization errors
     let output_data = serde_json::to_vec(&output).map_err(Error::JSONParseError)?;
 
-    if !script_path.exists() {
+    if !hook_path.exists() {
         return Ok(None);
     }
 
-    let mut child = Command::new(script_path)
+    let mut child = Command::new(hook_path)
         .stdin(Stdio::piped())
-        .stdout(if is_piped_stdout { Stdio::piped() } else { Stdio::inherit() })
+        .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()?;
 
@@ -120,7 +106,7 @@ pub fn run_hook<P: AsRef<Path>>(
 
     if !status.success() {
         return Err(Error::HookExecutionError {
-            script: script_path.display().to_string(),
+            script: hook_path.display().to_string(),
             status,
         });
     }
