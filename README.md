@@ -7,6 +7,7 @@
 
 ## Table of Contents
 
+- [Installation](#installation)
 - [Project template example](#project-template-example)
   - [baker.yaml File](#bakeryaml-file)
   - [Files with .baker.j2 extension](#files-with-bakerj2-extension)
@@ -24,6 +25,30 @@
   - [Single Choice](#single-choice)
   - [Multiple Choice](#multiple-choice)
   - [Conditional questions](#conditional-questions)
+
+## Installation
+
+You can install Baker using one of the following methods:
+
+### Install via Homebrew (macOS)
+
+```bash
+brew install aliev/tap/baker
+```
+
+### Install prebuilt binaries via shell script (Linux/macOS)
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/aliev/baker/releases/download/v0.6.0/baker-installer.sh | sh
+```
+
+### Install prebuilt binaries via PowerShell script (Windows)
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/aliev/baker/releases/download/v0.6.0/baker-installer.ps1 | iex"
+```
+
+Prebuilt binaries for all supported platforms are available on the [releases page](https://github.com/aliev/baker/releases).
 
 ## Project template example
 
