@@ -25,6 +25,7 @@
   - [Single Choice](#single-choice)
   - [Multiple Choice](#multiple-choice)
   - [Conditional questions](#conditional-questions)
+- [Comparing Baker to other project generators](#comparing-baker-to-other-project-generators)
 
 ## Installation
 
@@ -610,3 +611,29 @@ questions:
       - Tornado
     ask_if: "language == 'Python'"
 ```
+
+## Comparing Baker to other project generators
+
+| Feature                                      | Baker                                                                          | Kickstart      | cargo-generate          | Copier                 | Cookiecutter              | Yeoman                        |
+| -------------------------------------------- | ------------------------------------------------------------------------------ | -------------- | ----------------------- | ---------------------- | ------------------------- | ----------------------------- |
+| 🟢 **In-template debug() support**           | ✅ Use `{{ debug() }}` to inspect context                                      | ❌             | ❌                      | ❌                     | ❌                        | ⚠️ Only via console.log       |
+| 🟢 **Structured hook communication**         | ✅ pre/post hooks exchange structured JSON via stdin/stdout                    | ❌             | ❌                      | ❌                     | ❌                        | ❌                            |
+| 🟢 **Safe hook execution**                   | ✅ Warns before executing hooks                                                | ❌             | ❌                      | ❌                     | ❌                        | ⚠️ Depends on generator       |
+| 🟢 **Schema versioning for config**          | ✅ Schema version ensures backward compatibility across Baker versions         | ❌             | ❌                      | ❌                     | ❌                        | ❌                            |
+| 🟢 **YAML & JSON config support**            | ✅ Supports `yaml` **and** `json` configurations                               | ❌ Only TOML   | ❌ Only TOML            | ❌ Only YAML           | ❌ Only JSON              | ❌ In JS code                 |
+| 🟢 **Platform-specific hooks**               | ✅ Use `{{platform.family}}/pre` etc. for OS-aware logic                       | ❌             | ⚠️ Limited via Rhai     | ❌                     | ❌                        | ⚠️ Custom logic required      |
+| 🟢 **CI/CD-friendly answers piping**         | ✅ `--answers=-` or echo JSON into CLI                                         | ❌             | ⚠️ Partial              | ✅ Via pre-filled YAML | ⚠️ `--no-input` only      | ❌ Manual scripting           |
+| 🟢 **Lightweight & Fast**                    | ✅ Rust binary, no runtime dependencies                                        | ✅ Rust binary | ✅ Rust binary          | ❌ Requires Python     | ❌ Requires Python        | ❌ Requires Node.js           |
+| 🟢 **Simple CLI Interface**                  | ✅ `baker <template> <output>` + `--answers`, `--skip-confirms`                | ✅ Simple      | ❌ Requires Cargo usage | ❌ More verbose        | ✅ Simple                 | ❌ Requires generator install |
+| 🟢 **Language-agnostic hooks**               | ✅ Hooks can be in _any_ language (Bash, Python, etc.)                         | ✅ Yes         | ⚠️ Only Rhai scripting  | ✅ Yes                 | ✅ Yes                    | ❌ Only JS                    |
+| 🟢 **Templated file/dir names**              | ✅ Full MiniJinja templating in names & conditions                             | ✅ Yes         | ✅ Yes                  | ✅ Yes                 | ✅ Yes                    | ✅ Via JS logic               |
+| 🟢 **Templated prompts & defaults**          | ✅ Dynamic defaults using MiniJinja, conditional via `ask_if`                  | ✅ Yes         | ⚠️ Limited              | ✅ Full Jinja          | ❌ Static only            | ✅ Full control in JS         |
+| 🟢 **Glob-based ignore file**                | ✅ `.bakerignore` with advanced Globset syntax                                 | ✅ Yes         | ✅ Yes                  | ✅ `_exclude`          | ⚠️ `_copy_without_render` | ❌ Manual filter in code      |
+| 🟢 **Cross-platform binaries**               | ✅ Precompiled for Linux, macOS, Windows                                       | ✅ Yes         | ✅ Yes                  | ✅ Yes                 | ✅ Yes                    | ✅ Yes                        |
+| 🟢 **Language-agnostic scaffolding**         | ✅ Works with any language / stack                                             | ✅ Yes         | ❌ Rust-focused         | ✅ Yes                 | ✅ Yes                    | ⚠️ JS-centric                 |
+| 🟢 **Answers accessible in later questions** | ✅ All previous answers available via MiniJinja in `default`, `help`, `ask_if` | ⚠️ Limited     | ⚠️ Partial (via Rhai)   | ✅ Yes (Jinja context) | ❌                        | ✅ Full control in JS         |
+| 🟢 **Templated engine**                      | ✅ Fast, safe, embedded Jinja2-like templating in Rust                         | Tera           | Liquid                  | Jinja2                 | Jinja2                    | EJS                           |
+
+### ℹ️ Disclaimer
+
+This comparison was made based on available documentation. If you notice any **inaccuracies or outdated information**, please [create an issue](https://github.com/aliev/baker/issues) — I’ll be happy to update the table accordingly.
