@@ -5,6 +5,26 @@
   <p><strong>Baker</strong> is a command-line tool that helps you quickly <a href="https://en.wikipedia.org/wiki/Scaffold_(programming)">scaffold</a> new projects. It supports language-independent <a href="#using-hooks">hooks</a> for automating routine tasks. Baker is written in Rust and distributed as a standalone binary. Precompiled binaries are available for popular platforms on the <a href="https://github.com/aliev/baker/releases">releases page</a>.</p>
 </div>
 
+## Table of Contents
+
+- [Project template example](#project-template-example)
+  - [baker.yaml File](#bakeryaml-file)
+  - [Files with .baker.j2 extension](#files-with-bakerj2-extension)
+  - [Templated File Names](#templated-file-names)
+  - [.bakerignore File](#bakerignore-file)
+- [Recipes](#recipes)
+  - [Passing Default Answers](#passing-default-answers)
+  - [Debugging Templates](#debugging-templates)
+- [Hooks](#hooks)
+  - [Customizing Hook Filenames](#customizing-hook-filenames)
+  - [Available Platform Variables](#available-platform-variables)
+- [Questions](#questions)
+  - [Single-Input](#single-input)
+  - [Yes / No](#yes--no)
+  - [Single Choice](#single-choice)
+  - [Multiple Choice](#multiple-choice)
+  - [Conditional questions](#conditional-questions)
+
 ## Project template example
 
 To get started, you can use the [examples/demo](examples/demo) template, which demonstrates the core features of Baker:
