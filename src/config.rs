@@ -15,6 +15,10 @@ pub enum Type {
     Str,
     /// Boolean (yes/no) question type
     Bool,
+    /// JSON structured input type
+    Json,
+    /// YAML structured input type
+    Yaml,
 }
 #[derive(Debug, Deserialize)]
 pub struct Secret {
@@ -48,6 +52,9 @@ pub struct Question {
     pub secret: Option<Secret>,
     #[serde(default)]
     pub ask_if: String,
+    /// JSON Schema for validation (for Json and Yaml types)
+    #[serde(default)]
+    pub schema: Option<String>,
 }
 
 /// Main configuration structure holding all questions
@@ -106,6 +113,8 @@ pub enum QuestionType {
     SingleChoice,
     Text,
     Boolean,
+    Json,
+    Yaml,
 }
 
 #[derive(Debug)]
@@ -133,6 +142,8 @@ impl IntoQuestionType for Question {
             }
             (Type::Str, true) => QuestionType::Text,
             (Type::Bool, _) => QuestionType::Boolean,
+            (Type::Json, _) => QuestionType::Json,
+            (Type::Yaml, _) => QuestionType::Yaml,
         }
     }
 }
@@ -167,6 +178,42 @@ impl Question {
                         engine.render(default_str, answers).unwrap_or_default();
                     serde_json::Value::String(default_rendered)
                 }
+                QuestionType::Json => {
+                    // If the default is already a JSON object or array, use it directly
+                    if default.is_object() || default.is_array() {
+                        default
+                    } else if let Some(default_str) = default.as_str() {
+                        // If it's a string, try to render it as a template first
+                        let rendered_str = engine
+                            .render(default_str, answers)
+                            .unwrap_or(default_str.to_string());
+                        // Then parse it as JSON
+                        serde_json::from_str(&rendered_str)
+                            .unwrap_or(serde_json::Value::Null)
+                    } else {
+                        // Fallback to empty object
+                        serde_json::json!({})
+                    }
+                }
+                QuestionType::Yaml => {
+                    // If the default is already a JSON object or array, use it directly
+                    if default.is_object() || default.is_array() {
+                        default
+                    } else if let Some(default_str) = default.as_str() {
+                        // If it's a string, try to render it as a template first
+                        let rendered_str = engine
+                            .render(default_str, answers)
+                            .unwrap_or(default_str.to_string());
+                        // Then parse it as YAML
+                        match serde_yaml::from_str(&rendered_str) {
+                            Ok(yaml_value) => yaml_value,
+                            Err(_) => serde_json::Value::Null,
+                        }
+                    } else {
+                        // Fallback to empty object
+                        serde_json::json!({})
+                    }
+                }
             }
         };
 
@@ -198,6 +245,7 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -232,6 +280,7 @@ mod tests {
                 "Next.JS".to_string(),
                 "TypeScript".to_string(),
             ],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -263,6 +312,7 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -286,6 +336,7 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -309,6 +360,7 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -333,6 +385,7 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
