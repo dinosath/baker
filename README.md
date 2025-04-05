@@ -701,7 +701,7 @@ production:
 Template usage:
 
 ```
-{% for env_name, env_config in environments.items() %}
+{% for env_name, env_config in environments|items %}
 [{{ env_name }}]
 URL={{ env_config.url }}
 DEBUG={{ env_config.debug }}
