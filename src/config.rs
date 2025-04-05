@@ -254,14 +254,11 @@ mod tests {
         });
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, help, default, r#type } => {
-                assert!(!ask_if);
-                assert_eq!(help, "Hello, World".to_string());
-                assert_eq!(default, serde_json::Value::Bool(false));
-                assert_eq!(r#type, QuestionType::Boolean);
-            }
-        }
+        let QuestionRendered { ask_if, help, default, r#type } = result;
+        assert!(!ask_if);
+        assert_eq!(help, "Hello, World".to_string());
+        assert_eq!(default, serde_json::Value::Bool(false));
+        assert_eq!(r#type, QuestionType::Boolean);
     }
 
     #[test]
@@ -289,17 +286,11 @@ mod tests {
         });
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, help, default, r#type } => {
-                assert!(ask_if);
-                assert_eq!(help, "Please select your stack".to_string());
-                assert_eq!(
-                    default,
-                    json!(vec!["Python".to_string(), "Django".to_string()])
-                );
-                assert_eq!(r#type, QuestionType::MultipleChoice);
-            }
-        }
+        let QuestionRendered { ask_if, help, default, r#type } = result;
+        assert!(ask_if);
+        assert_eq!(help, "Please select your stack".to_string());
+        assert_eq!(default, json!(vec!["Python".to_string(), "Django".to_string()]));
+        assert_eq!(r#type, QuestionType::MultipleChoice);
     }
 
     #[test]
@@ -319,12 +310,9 @@ mod tests {
         let answers = json!({});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, .. } => {
-                assert!(ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-            }
-        }
+        let QuestionRendered { ask_if, r#type, .. } = result;
+        assert!(ask_if);
+        assert_eq!(r#type, QuestionType::Text);
     }
     #[test]
     fn it_works_4() {
@@ -343,12 +331,9 @@ mod tests {
         let answers = json!({"answer": "Here is an answer"});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, .. } => {
-                assert!(!ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-            }
-        }
+        let QuestionRendered { ask_if, r#type, .. } = result;
+        assert!(!ask_if);
+        assert_eq!(r#type, QuestionType::Text);
     }
     #[test]
     fn it_works_5() {
@@ -367,13 +352,10 @@ mod tests {
         let answers = json!({"question1": "This is a default value for the question1"});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, default, .. } => {
-                assert!(!ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-                assert_eq!(default, json!("This is a default value for the question1"));
-            }
-        }
+        let QuestionRendered { ask_if, r#type, default, .. } = result;
+        assert!(!ask_if);
+        assert_eq!(r#type, QuestionType::Text);
+        assert_eq!(default, json!("This is a default value for the question1"));
     }
     #[test]
     fn it_works_6() {
@@ -392,12 +374,9 @@ mod tests {
         let answers = json!({});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, default, .. } => {
-                assert!(ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-                assert_eq!(default, json!("This is a default value"));
-            }
-        };
+        let QuestionRendered { ask_if, r#type, default, .. } = result;
+        assert!(ask_if);
+        assert_eq!(r#type, QuestionType::Text);
+        assert_eq!(default, json!("This is a default value"));
     }
 }
