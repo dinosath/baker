@@ -120,7 +120,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
         log::debug!("Cloning repository '{}'", repo_url);
 
         let repo_name =
-            repo_url.split('/').last().unwrap_or("template").trim_end_matches(".git");
+            repo_url.split('/').next_back().unwrap_or("template").trim_end_matches(".git");
         let clone_path = PathBuf::from(repo_name);
 
         if clone_path.exists() {
