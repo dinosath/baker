@@ -637,7 +637,6 @@ When prompted for JSON input, the user is given multiple options:
 
 1. Open in external text editor
 2. Enter multi-line input in console
-3. Provide a file path
 
 ```
 Configure your database settings - Choose input method:
