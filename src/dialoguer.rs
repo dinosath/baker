@@ -4,7 +4,6 @@ use crate::{
 };
 
 use dialoguer::{Confirm, Editor, Input, MultiSelect, Password, Select};
-use jsonschema::JSONSchema;
 
 pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
     if skip {
@@ -148,16 +147,20 @@ fn get_data_from_console(is_yaml: bool, prompt: &str) -> Result<serde_json::Valu
 /// Validate a value against a JSON schema.
 pub fn validate_with_schema(value: &serde_json::Value, schema: &str) -> Result<()> {
     let schema_value: serde_json::Value = serde_json::from_str(schema)?;
-    let compiled = JSONSchema::compile(&schema_value).map_err(|e| {
+
+    let validator = jsonschema::validator_for(&schema_value).map_err(|e| {
         crate::error::Error::Other(anyhow::anyhow!("Invalid JSON schema: {}", e))
     })?;
 
-    let validation = compiled.validate(value);
-    if let Err(errors) = validation {
-        let error_msgs: Vec<String> = errors.into_iter().map(|e| e.to_string()).collect();
+    let errors: Vec<String> = validator
+        .iter_errors(value)
+        .map(|error| format!("Error: {} (at {})", error, error.instance_path))
+        .collect();
+
+    if !errors.is_empty() {
         return Err(crate::error::Error::Other(anyhow::anyhow!(
             "Validation failed: {}",
-            error_msgs.join(", ")
+            errors.join("\n")
         )));
     }
 
