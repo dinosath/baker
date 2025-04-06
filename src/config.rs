@@ -15,6 +15,10 @@ pub enum Type {
     Str,
     /// Boolean (yes/no) question type
     Bool,
+    /// JSON structured input type
+    Json,
+    /// YAML structured input type
+    Yaml,
 }
 #[derive(Debug, Deserialize)]
 pub struct Secret {
@@ -48,6 +52,9 @@ pub struct Question {
     pub secret: Option<Secret>,
     #[serde(default)]
     pub ask_if: String,
+    /// JSON Schema for validation (for Json and Yaml types)
+    #[serde(default)]
+    pub schema: Option<String>,
 }
 
 /// Main configuration structure holding all questions
@@ -106,6 +113,8 @@ pub enum QuestionType {
     SingleChoice,
     Text,
     Boolean,
+    Json,
+    Yaml,
 }
 
 #[derive(Debug)]
@@ -133,11 +142,44 @@ impl IntoQuestionType for Question {
             }
             (Type::Str, true) => QuestionType::Text,
             (Type::Bool, _) => QuestionType::Boolean,
+            (Type::Json, _) => QuestionType::Json,
+            (Type::Yaml, _) => QuestionType::Yaml,
         }
     }
 }
 
 impl Question {
+    fn process_structured_default_value(
+        &self,
+        default: serde_json::Value,
+        answers: &serde_json::Value,
+        engine: &dyn TemplateRenderer,
+        question_type: &QuestionType,
+    ) -> serde_json::Value {
+        // If the default is already a JSON object or array, use it directly
+        if default.is_object() || default.is_array() {
+            default
+        } else if let Some(default_str) = default.as_str() {
+            // If it's a string, try to render it as a template first
+            let rendered_str =
+                engine.render(default_str, answers).unwrap_or(default_str.to_string());
+
+            // Parse the string based on the question type
+            match question_type {
+                QuestionType::Json => {
+                    serde_json::from_str(&rendered_str).unwrap_or(serde_json::json!({}))
+                }
+                QuestionType::Yaml => {
+                    serde_yaml::from_str(&rendered_str).unwrap_or(serde_json::json!({}))
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            // Fallback to empty object
+            serde_json::json!({})
+        }
+    }
+
     pub fn render(
         &self,
         question_key: &str,
@@ -167,6 +209,13 @@ impl Question {
                         engine.render(default_str, answers).unwrap_or_default();
                     serde_json::Value::String(default_rendered)
                 }
+                QuestionType::Json | QuestionType::Yaml => self
+                    .process_structured_default_value(
+                        default,
+                        answers,
+                        engine,
+                        &self.into_question_type(),
+                    ),
             }
         };
 
@@ -198,6 +247,7 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -206,14 +256,11 @@ mod tests {
         });
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, help, default, r#type } => {
-                assert!(!ask_if);
-                assert_eq!(help, "Hello, World".to_string());
-                assert_eq!(default, serde_json::Value::Bool(false));
-                assert_eq!(r#type, QuestionType::Boolean);
-            }
-        }
+        let QuestionRendered { ask_if, help, default, r#type } = result;
+        assert!(!ask_if);
+        assert_eq!(help, "Hello, World".to_string());
+        assert_eq!(default, serde_json::Value::Bool(false));
+        assert_eq!(r#type, QuestionType::Boolean);
     }
 
     #[test]
@@ -232,6 +279,7 @@ mod tests {
                 "Next.JS".to_string(),
                 "TypeScript".to_string(),
             ],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -240,17 +288,11 @@ mod tests {
         });
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, help, default, r#type } => {
-                assert!(ask_if);
-                assert_eq!(help, "Please select your stack".to_string());
-                assert_eq!(
-                    default,
-                    json!(vec!["Python".to_string(), "Django".to_string()])
-                );
-                assert_eq!(r#type, QuestionType::MultipleChoice);
-            }
-        }
+        let QuestionRendered { ask_if, help, default, r#type } = result;
+        assert!(ask_if);
+        assert_eq!(help, "Please select your stack".to_string());
+        assert_eq!(default, json!(vec!["Python".to_string(), "Django".to_string()]));
+        assert_eq!(r#type, QuestionType::MultipleChoice);
     }
 
     #[test]
@@ -263,18 +305,16 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
         let answers = json!({});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, .. } => {
-                assert!(ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-            }
-        }
+        let QuestionRendered { ask_if, r#type, .. } = result;
+        assert!(ask_if);
+        assert_eq!(r#type, QuestionType::Text);
     }
     #[test]
     fn it_works_4() {
@@ -286,18 +326,16 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
         let answers = json!({"answer": "Here is an answer"});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, .. } => {
-                assert!(!ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-            }
-        }
+        let QuestionRendered { ask_if, r#type, .. } = result;
+        assert!(!ask_if);
+        assert_eq!(r#type, QuestionType::Text);
     }
     #[test]
     fn it_works_5() {
@@ -309,19 +347,17 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
         let answers = json!({"question1": "This is a default value for the question1"});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, default, .. } => {
-                assert!(!ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-                assert_eq!(default, json!("This is a default value for the question1"));
-            }
-        }
+        let QuestionRendered { ask_if, r#type, default, .. } = result;
+        assert!(!ask_if);
+        assert_eq!(r#type, QuestionType::Text);
+        assert_eq!(default, json!("This is a default value for the question1"));
     }
     #[test]
     fn it_works_6() {
@@ -333,18 +369,16 @@ mod tests {
             secret: None,
             multiselect: false,
             choices: vec![],
+            schema: None,
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
         let answers = json!({});
 
         let result = question.render("question1".as_ref(), &answers, &*engine);
-        match result {
-            QuestionRendered { ask_if, r#type, default, .. } => {
-                assert!(ask_if);
-                assert_eq!(r#type, QuestionType::Text);
-                assert_eq!(default, json!("This is a default value"));
-            }
-        };
+        let QuestionRendered { ask_if, r#type, default, .. } = result;
+        assert!(ask_if);
+        assert_eq!(r#type, QuestionType::Text);
+        assert_eq!(default, json!("This is a default value"));
     }
 }
