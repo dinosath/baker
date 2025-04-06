@@ -30,3 +30,4 @@ install-updater = true
 [preinstall-tool.linux-musl]
 apt = ["musl-tools"]
 symlink = { from = "/usr/bin/musl-gcc", to = "/usr/bin/x86_64-linux-musl-gcc" }
+env = { CC_x86_64_unknown_linux_musl = "x86_64-linux-musl-gcc" }
