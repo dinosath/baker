@@ -26,3 +26,7 @@ install-path = "CARGO_HOME"
 publish-jobs = ["homebrew"]
 # Whether to install an updater program
 install-updater = true
+
+[preinstall-tool.linux-musl]
+apt = ["musl-tools"]
+symlink = { from = "/usr/bin/musl-gcc", to = "/usr/bin/x86_64-linux-musl-gcc" }
