@@ -149,6 +149,37 @@ impl IntoQuestionType for Question {
 }
 
 impl Question {
+    fn process_structured_default_value(
+        &self,
+        default: serde_json::Value,
+        answers: &serde_json::Value,
+        engine: &dyn TemplateRenderer,
+        question_type: &QuestionType,
+    ) -> serde_json::Value {
+        // If the default is already a JSON object or array, use it directly
+        if default.is_object() || default.is_array() {
+            default
+        } else if let Some(default_str) = default.as_str() {
+            // If it's a string, try to render it as a template first
+            let rendered_str =
+                engine.render(default_str, answers).unwrap_or(default_str.to_string());
+
+            // Parse the string based on the question type
+            match question_type {
+                QuestionType::Json => {
+                    serde_json::from_str(&rendered_str).unwrap_or(serde_json::json!({}))
+                }
+                QuestionType::Yaml => {
+                    serde_yaml::from_str(&rendered_str).unwrap_or(serde_json::json!({}))
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            // Fallback to empty object
+            serde_json::json!({})
+        }
+    }
+
     pub fn render(
         &self,
         question_key: &str,
@@ -178,42 +209,13 @@ impl Question {
                         engine.render(default_str, answers).unwrap_or_default();
                     serde_json::Value::String(default_rendered)
                 }
-                QuestionType::Json => {
-                    // If the default is already a JSON object or array, use it directly
-                    if default.is_object() || default.is_array() {
-                        default
-                    } else if let Some(default_str) = default.as_str() {
-                        // If it's a string, try to render it as a template first
-                        let rendered_str = engine
-                            .render(default_str, answers)
-                            .unwrap_or(default_str.to_string());
-                        // Then parse it as JSON
-                        serde_json::from_str(&rendered_str)
-                            .unwrap_or(serde_json::Value::Null)
-                    } else {
-                        // Fallback to empty object
-                        serde_json::json!({})
-                    }
-                }
-                QuestionType::Yaml => {
-                    // If the default is already a JSON object or array, use it directly
-                    if default.is_object() || default.is_array() {
-                        default
-                    } else if let Some(default_str) = default.as_str() {
-                        // If it's a string, try to render it as a template first
-                        let rendered_str = engine
-                            .render(default_str, answers)
-                            .unwrap_or(default_str.to_string());
-                        // Then parse it as YAML
-                        match serde_yaml::from_str(&rendered_str) {
-                            Ok(yaml_value) => yaml_value,
-                            Err(_) => serde_json::Value::Null,
-                        }
-                    } else {
-                        // Fallback to empty object
-                        serde_json::json!({})
-                    }
-                }
+                QuestionType::Json | QuestionType::Yaml => self
+                    .process_structured_default_value(
+                        default,
+                        answers,
+                        engine,
+                        &self.into_question_type(),
+                    ),
             }
         };
 
