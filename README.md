@@ -27,6 +27,9 @@
   - [JSON Complex Type](#json-complex-type)
   - [YAML Complex Type](#yaml-complex-type)
   - [Validation](#validation)
+    - [Required Field Validation](#required-field-validation)
+    - [Numeric Value Validation](#numeric-value-validation)
+    - [Pattern Matching with Regular Expressions](#pattern-matching-with-regular-expressions)
   - [Conditional questions](#conditional-questions)
 - [Comparing Baker to other project generators](#comparing-baker-to-other-project-generators)
 
