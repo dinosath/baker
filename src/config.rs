@@ -55,6 +55,10 @@ pub struct Question {
     /// JSON Schema for validation (for Json and Yaml types)
     #[serde(default)]
     pub schema: Option<String>,
+    #[serde(default)]
+    pub valid_if: String,
+    #[serde(default = "get_default_error_message")]
+    pub error_message: String,
 }
 
 /// Main configuration structure holding all questions
@@ -74,6 +78,10 @@ fn get_default_post_hook_filename() -> String {
 
 fn get_default_pre_hook_filename() -> String {
     "pre".to_string()
+}
+
+fn get_default_error_message() -> String {
+    "Invalid answer".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -248,6 +256,8 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            valid_if: "true".to_string(),
+            error_message: "".to_string(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -280,6 +290,8 @@ mod tests {
                 "TypeScript".to_string(),
             ],
             schema: None,
+            valid_if: "true".to_string(),
+            error_message: "".to_string(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -306,6 +318,8 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            valid_if: "true".to_string(),
+            error_message: "".to_string(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -327,6 +341,8 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            valid_if: "true".to_string(),
+            error_message: "".to_string(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -348,6 +364,8 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            valid_if: "true".to_string(),
+            error_message: "".to_string(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -370,6 +388,8 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            valid_if: "true".to_string(),
+            error_message: "".to_string(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 

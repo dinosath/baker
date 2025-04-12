@@ -1,5 +1,6 @@
 use crate::{error::Result, ioutils::path_to_str};
 use minijinja::Environment;
+use regex::Regex;
 use serde_json::json;
 use std::path::Path;
 
@@ -49,10 +50,20 @@ pub struct MiniJinjaRenderer {
     default_context: serde_json::Value,
 }
 
+fn regex_filter(val: &str, re: &str) -> bool {
+    let re = Regex::new(re).unwrap();
+
+    if re.captures(val).is_none() {
+        return false;
+    }
+
+    true
+}
+
 impl MiniJinjaRenderer {
     /// Creates a new MiniJinjaEngine instance with default environment.
     pub fn new() -> Self {
-        let env = Environment::new();
+        let mut env = Environment::new();
         let default_context = json!({
             "platform": {
                 "os": std::env::consts::OS,
@@ -60,6 +71,8 @@ impl MiniJinjaRenderer {
                 "arch": std::env::consts::ARCH,
             }
         });
+
+        env.add_filter("regex", regex_filter);
 
         Self { env, default_context }
     }

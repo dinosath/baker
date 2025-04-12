@@ -26,6 +26,7 @@
   - [Multiple Choice](#multiple-choice)
   - [JSON Complex Type](#json-complex-type)
   - [YAML Complex Type](#yaml-complex-type)
+  - [Validation](#validation)
   - [Conditional questions](#conditional-questions)
 - [Comparing Baker to other project generators](#comparing-baker-to-other-project-generators)
 
@@ -708,6 +709,68 @@ DEBUG={{ env_config.debug }}
 
 {% endfor %}
 ```
+
+### Validation
+
+Baker supports answer validation using the `valid_if` and `error_message` attributes. The `valid_if` attribute uses MiniJinja's expression language to validate user input, while `error_message` provides feedback when validation fails.
+
+#### Required Field Validation
+
+Ensure a field is not empty:
+
+```yaml
+schemaVersion: v1
+
+questions:
+  age:
+    type: str
+    help: "Enter your age"
+    valid_if: "age"
+    error_message: "Value cannot be empty"
+```
+
+#### Numeric Value Validation
+
+Check if a numeric value meets certain criteria:
+
+```yaml
+schemaVersion: v1
+
+questions:
+  age:
+    type: str
+    help: "Enter your age"
+    valid_if: "age|int >= 18"
+    error_message: "You must be at least 18 years old. You entered {{age}}."
+```
+
+The error message can include template variables to provide context about the invalid input.
+
+#### Pattern Matching with Regular Expressions
+
+Combine regex pattern matching with numeric validation:
+
+```yaml
+schemaVersion: v1
+
+questions:
+  age:
+    type: str
+    help: "Enter your age"
+    valid_if: "(age | regex('[0-9]')) and (age|int >= 18)"
+    error_message: "You must be at least 18 years old. You entered {{age}}."
+```
+
+This example validates that:
+
+1. The input matches a numeric pattern using regex
+2. The numeric value is at least 18
+
+If validation fails, Baker will:
+
+1. Display the error message
+2. Clear the invalid answer
+3. Prompt the user to try again
 
 ### Conditional questions
 
