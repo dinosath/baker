@@ -1,9 +1,6 @@
 use crate::{
-    config::{Config, IntoQuestionType, Question, QuestionRendered, QuestionType},
-    dialoguer::{
-        confirm, prompt_boolean, prompt_multiple_choice, prompt_single_choice,
-        prompt_structured_data, prompt_text,
-    },
+    config::Config,
+    dialoguer::{ask_question, confirm},
     error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,
@@ -135,41 +132,6 @@ pub fn get_args() -> Args {
                 e.exit();
             }
         }
-    }
-}
-
-fn ask_question(
-    key: &str,
-    question: &Question,
-    engine: &dyn TemplateRenderer,
-    answers: &serde_json::Map<String, serde_json::Value>,
-) -> Result<serde_json::Value> {
-    let QuestionRendered { help, default, ask_if, .. } =
-        question.render(key, &json!(answers), engine);
-
-    if ask_if {
-        match question.into_question_type() {
-            QuestionType::MultipleChoice => prompt_multiple_choice(
-                question.choices.clone(),
-                default.clone(),
-                help.clone(),
-            ),
-            QuestionType::Boolean => prompt_boolean(default.clone(), help.clone()),
-            QuestionType::SingleChoice => prompt_single_choice(
-                question.choices.clone(),
-                default.clone(),
-                help.clone(),
-            ),
-            QuestionType::Text => prompt_text(question, default.clone(), help.clone()),
-            QuestionType::Json | QuestionType::Yaml => prompt_structured_data(
-                question,
-                default.clone(),
-                help.clone(),
-                question.into_question_type(),
-            ),
-        }
-    } else {
-        Ok(default.clone())
     }
 }
 

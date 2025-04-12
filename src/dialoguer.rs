@@ -1,9 +1,11 @@
 use crate::{
-    config::{Question, QuestionType},
+    config::{IntoQuestionType, Question, QuestionRendered, QuestionType},
     error::Result,
+    renderer::TemplateRenderer,
 };
 
 use dialoguer::{Confirm, Editor, Input, MultiSelect, Password, Select};
+use serde_json::json;
 
 pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
     if skip {
@@ -217,4 +219,39 @@ pub fn prompt_structured_data(
     }
 
     Ok(result)
+}
+
+pub fn ask_question(
+    key: &str,
+    question: &Question,
+    engine: &dyn TemplateRenderer,
+    answers: &serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value> {
+    let QuestionRendered { help, default, ask_if, .. } =
+        question.render(key, &json!(answers), engine);
+
+    if ask_if {
+        match question.into_question_type() {
+            QuestionType::MultipleChoice => prompt_multiple_choice(
+                question.choices.clone(),
+                default.clone(),
+                help.clone(),
+            ),
+            QuestionType::Boolean => prompt_boolean(default.clone(), help.clone()),
+            QuestionType::SingleChoice => prompt_single_choice(
+                question.choices.clone(),
+                default.clone(),
+                help.clone(),
+            ),
+            QuestionType::Text => prompt_text(question, default.clone(), help.clone()),
+            QuestionType::Json | QuestionType::Yaml => prompt_structured_data(
+                question,
+                default.clone(),
+                help.clone(),
+                question.into_question_type(),
+            ),
+        }
+    } else {
+        Ok(default.clone())
+    }
 }
