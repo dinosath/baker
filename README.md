@@ -751,7 +751,7 @@ The error message can include template variables to provide context about the in
 
 #### Pattern Matching with Regular Expressions
 
-Combine regex pattern matching with numeric validation:
+Complex validation combining regex pattern matching with numeric validation and detailed error messages:
 
 ```yaml
 schemaVersion: v1
@@ -759,19 +759,26 @@ schemaVersion: v1
 questions:
   age:
     type: str
-    help: "Enter your age"
-    valid_if: "(age | regex('[0-9]')) and (age|int >= 18)"
-    error_message: "You must be at least 18 years old. You entered {{age}}."
+    help: Enter your age
+    valid_if: "age and (age|regex('[0-9]')) and (age|int >= 18)"
+    error_message: >
+      {% if not age %}Age is required field
+      {% elif not age|regex('[0-9]') %}Age must be numeric
+      {% elif not age|int >= 18 %}You must be at least 18 years old. You entered {{age}}
+      {% else %}Invalid input
+      {% endif %}
 ```
 
-This example validates that:
+This example demonstrates:
 
-1. The input matches a numeric pattern using regex
-2. The numeric value is at least 18
+1. Required field validation using `age`
+2. Pattern matching using `regex('[0-9]')` to ensure numeric input
+3. Numeric value validation ensuring age is at least 18
+4. Conditional error messages that provide specific feedback based on the validation failure
 
 If validation fails, Baker will:
 
-1. Display the error message
+1. Display the appropriate error message
 2. Clear the invalid answer
 3. Prompt the user to try again
 
