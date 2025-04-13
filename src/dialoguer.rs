@@ -146,32 +146,8 @@ fn get_data_from_console(is_yaml: bool, prompt: &str) -> Result<serde_json::Valu
     }
 }
 
-/// Validate a value against a JSON schema.
-pub fn validate_with_schema(value: &serde_json::Value, schema: &str) -> Result<()> {
-    let schema_value: serde_json::Value = serde_json::from_str(schema)?;
-
-    let validator = jsonschema::validator_for(&schema_value).map_err(|e| {
-        crate::error::Error::Other(anyhow::anyhow!("Invalid JSON schema: {}", e))
-    })?;
-
-    let errors: Vec<String> = validator
-        .iter_errors(value)
-        .map(|error| format!("Error: {} (at {})", error, error.instance_path))
-        .collect();
-
-    if !errors.is_empty() {
-        return Err(crate::error::Error::Other(anyhow::anyhow!(
-            "Validation failed: {}",
-            errors.join("\n")
-        )));
-    }
-
-    Ok(())
-}
-
 /// Prompt for structured data (JSON or YAML)
 pub fn prompt_structured_data(
-    question: &Question,
     default_value: serde_json::Value,
     prompt: String,
     question_type: QuestionType,
@@ -213,11 +189,6 @@ pub fn prompt_structured_data(
         _ => default_value,
     };
 
-    // Validate against schema if provided
-    if let Some(schema) = &question.schema {
-        validate_with_schema(&result, schema)?;
-    }
-
     Ok(result)
 }
 
@@ -245,7 +216,6 @@ pub fn ask_question(
             ),
             QuestionType::Text => prompt_text(question, default.clone(), help.clone()),
             QuestionType::Json | QuestionType::Yaml => prompt_structured_data(
-                question,
                 default.clone(),
                 help.clone(),
                 question.into_question_type(),
