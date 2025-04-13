@@ -29,6 +29,22 @@ pub struct Secret {
     pub mistmatch_err: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Validation {
+    #[serde(default)]
+    pub condition: String,
+    #[serde(default = "get_default_error_message")]
+    pub error_message: String,
+}
+
+fn get_default_condition() -> String {
+    "true".to_string()
+}
+
+fn get_default_error_message() -> String {
+    "Invalid answer".to_string()
+}
+
 /// Represents a single question in the configuration
 #[derive(Debug, Deserialize)]
 pub struct Question {
@@ -55,6 +71,8 @@ pub struct Question {
     /// JSON Schema for validation (for Json and Yaml types)
     #[serde(default)]
     pub schema: Option<String>,
+    #[serde(default = "get_default_validation")]
+    pub validation: Validation,
 }
 
 /// Main configuration structure holding all questions
@@ -74,6 +92,13 @@ fn get_default_post_hook_filename() -> String {
 
 fn get_default_pre_hook_filename() -> String {
     "pre".to_string()
+}
+
+fn get_default_validation() -> Validation {
+    Validation {
+        condition: get_default_condition(),
+        error_message: get_default_error_message(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -248,6 +273,7 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            validation: get_default_validation(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -280,6 +306,7 @@ mod tests {
                 "TypeScript".to_string(),
             ],
             schema: None,
+            validation: get_default_validation(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -306,6 +333,7 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            validation: get_default_validation(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -327,6 +355,7 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            validation: get_default_validation(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -348,6 +377,7 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            validation: get_default_validation(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 
@@ -370,6 +400,7 @@ mod tests {
             multiselect: false,
             choices: vec![],
             schema: None,
+            validation: get_default_validation(),
         };
         let engine = Box::new(MiniJinjaRenderer::new());
 

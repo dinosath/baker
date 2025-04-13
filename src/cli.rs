@@ -1,9 +1,6 @@
 use crate::{
-    config::{Config, IntoQuestionType, QuestionRendered, QuestionType},
-    dialoguer::{
-        confirm, prompt_boolean, prompt_multiple_choice, prompt_single_choice,
-        prompt_structured_data, prompt_text,
-    },
+    config::Config,
+    dialoguer::{ask_question, confirm},
     error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,
@@ -205,31 +202,25 @@ pub fn run(args: Args) -> Result<()> {
     };
 
     for (key, question) in config.questions {
-        let QuestionRendered { help, default, ask_if, .. } =
-            question.render(&key, &json!(answers), engine.as_ref());
+        loop {
+            let answer = ask_question(&key, &question, engine.as_ref(), &answers)?;
+            answers.insert(key.clone(), answer);
 
-        let answer = if ask_if {
-            // Asks questions
-            match question.into_question_type() {
-                QuestionType::MultipleChoice => {
-                    prompt_multiple_choice(question.choices, default, help)?
-                }
-                QuestionType::Boolean => prompt_boolean(default, help)?,
-                QuestionType::SingleChoice => {
-                    prompt_single_choice(question.choices, default, help)?
-                }
-                QuestionType::Text => prompt_text(&question, default, help)?,
-                QuestionType::Json | QuestionType::Yaml => prompt_structured_data(
-                    &question,
-                    default,
-                    help,
-                    question.into_question_type(),
-                )?,
+            let _answers = serde_json::Value::Object(answers.clone());
+
+            let is_valid_answer = engine
+                .execute_expression(&question.validation.condition, &_answers)
+                .unwrap_or(true);
+
+            if is_valid_answer {
+                break;
+            } else {
+                let rendered_error_message =
+                    engine.render(&question.validation.error_message, &_answers)?;
+                println!("{}", rendered_error_message);
+                answers.remove(&key);
             }
-        } else {
-            default
-        };
-        answers.insert(key, answer);
+        }
     }
 
     let answers = serde_json::Value::Object(answers);
