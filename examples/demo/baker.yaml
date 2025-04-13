@@ -1,20 +1,14 @@
 schemaVersion: v1
 
 questions:
-  project_name:
+  age:
     type: str
-    help: Please enter the name of your project
-
-  project_author:
-    type: str
-    help: "Please enter the author's name for {{project_name}}"
-
-  project_slug:
-    type: str
-    help: Please enter the project slug (or press Enter to use the default)
-    default: "{{ project_name|lower|replace(' ', '_') }}"
-
-  use_tests:
-    type: bool
-    help: Will your project include tests?
-    default: true
+    help: Enter your age
+    validation:
+      condition: "age and (age|regex('[0-9]')) and (age|int >= 18)"
+      error_message: >
+        {% if not age %}Age is required field
+        {% elif not age|regex('[0-9]') %}Age must be numeric
+        {% elif not age|int >= 18 %}You must be at least 18 years old. You entered {{age}}
+        {% else %}Invalid input
+        {% endif %}

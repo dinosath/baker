@@ -715,7 +715,7 @@ DEBUG={{ env_config.debug }}
 
 ### Validation
 
-Baker supports answer validation using the `valid_if` and `error_message` attributes. The `valid_if` attribute uses MiniJinja's expression language to validate user input, while `error_message` provides feedback when validation fails.
+Baker supports answer validation using the `validation` attribute. The `condition` attribute uses MiniJinja's expression language to validate user input, while `error_message` provides feedback when validation fails.
 
 #### Required Field Validation
 
@@ -728,8 +728,9 @@ questions:
   age:
     type: str
     help: "Enter your age"
-    valid_if: "age"
-    error_message: "Value cannot be empty"
+    validation:
+      condition: "age"
+      error_message: "Value cannot be empty"
 ```
 
 #### Numeric Value Validation
@@ -743,8 +744,9 @@ questions:
   age:
     type: str
     help: "Enter your age"
-    valid_if: "age|int >= 18"
-    error_message: "You must be at least 18 years old. You entered {{age}}."
+    validation:
+      condition: "age|int >= 18"
+      error_message: "You must be at least 18 years old. You entered {{age}}."
 ```
 
 The error message can include template variables to provide context about the invalid input.
@@ -760,13 +762,14 @@ questions:
   age:
     type: str
     help: Enter your age
-    valid_if: "age and (age|regex('[0-9]')) and (age|int >= 18)"
-    error_message: >
-      {% if not age %}Age is required field
-      {% elif not age|regex('[0-9]') %}Age must be numeric
-      {% elif not age|int >= 18 %}You must be at least 18 years old. You entered {{age}}
-      {% else %}Invalid input
-      {% endif %}
+    validation:
+      condition: "age and (age|regex('[0-9]')) and (age|int >= 18)"
+      error_message: >
+        {% if not age %}Age is required field
+        {% elif not age|regex('[0-9]') %}Age must be numeric
+        {% elif not age|int >= 18 %}You must be at least 18 years old. You entered {{age}}
+        {% else %}Invalid input
+        {% endif %}
 ```
 
 This example demonstrates:

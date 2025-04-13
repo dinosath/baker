@@ -208,14 +208,15 @@ pub fn run(args: Args) -> Result<()> {
 
             let _answers = serde_json::Value::Object(answers.clone());
 
-            let is_valid_answer =
-                engine.execute_expression(&question.valid_if, &_answers).unwrap_or(true);
+            let is_valid_answer = engine
+                .execute_expression(&question.validation.condition, &_answers)
+                .unwrap_or(true);
 
             if is_valid_answer {
                 break;
             } else {
                 let rendered_error_message =
-                    engine.render(&question.error_message, &_answers)?;
+                    engine.render(&question.validation.error_message, &_answers)?;
                 println!("{}", rendered_error_message);
                 answers.remove(&key);
             }
