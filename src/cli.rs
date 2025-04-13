@@ -11,6 +11,7 @@ use crate::{
     loader::TemplateSource,
     renderer::{MiniJinjaRenderer, TemplateRenderer},
     template::{operation::TemplateOperation, processor::TemplateProcessor},
+    validation::{validate_answer, ValidationError},
 };
 use clap::{error::ErrorKind, CommandFactory, Parser, ValueEnum};
 use serde_json::json;
@@ -204,21 +205,15 @@ pub fn run(args: Args) -> Result<()> {
     for (key, question) in config.questions {
         loop {
             let answer = ask_question(&key, &question, engine.as_ref(), &answers)?;
-            answers.insert(key.clone(), answer);
-
+            answers.insert(key.clone(), answer.clone());
             let _answers = serde_json::Value::Object(answers.clone());
 
-            let is_valid_answer = engine
-                .execute_expression(&question.validation.condition, &_answers)
-                .unwrap_or(true);
-
-            if is_valid_answer {
-                break;
-            } else {
-                let rendered_error_message =
-                    engine.render(&question.validation.error_message, &_answers)?;
-                println!("{}", rendered_error_message);
-                answers.remove(&key);
+            match validate_answer(&question, &answer, engine.as_ref(), &_answers) {
+                Ok(_) => break,
+                Err(err) => match err {
+                    ValidationError::JsonSchema(msg) => println!("{}", msg),
+                    ValidationError::FieldValidation(msg) => println!("{}", msg),
+                },
             }
         }
     }
