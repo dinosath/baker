@@ -146,6 +146,34 @@ fn get_data_from_console(is_yaml: bool, prompt: &str) -> Result<serde_json::Valu
     }
 }
 
+/// Edit structured data using an external editor
+fn edit_with_external_editor(
+    default_value: serde_json::Value,
+    is_yaml: bool,
+    extension: &str,
+) -> Result<serde_json::Value> {
+    let default_str = if default_value.is_null() {
+        "{}".to_string()
+    } else if is_yaml {
+        serde_yaml::to_string(&default_value)?
+    } else {
+        serde_json::to_string_pretty(&default_value)?
+    };
+
+    if let Some(editor_result) = Editor::new().extension(extension).edit(&default_str)? {
+        if editor_result.trim().is_empty() {
+            Ok(default_value)
+        } else if is_yaml {
+            Ok(serde_yaml::from_str(&editor_result)?)
+        } else {
+            Ok(serde_json::from_str(&editor_result)?)
+        }
+    } else {
+        // User canceled editing
+        Ok(default_value)
+    }
+}
+
 /// Prompt for structured data (JSON or YAML)
 pub fn prompt_structured_data(
     default_value: serde_json::Value,
@@ -157,35 +185,8 @@ pub fn prompt_structured_data(
     let input_method = prompt_for_input_method(&prompt, 0)?;
 
     let result = match input_method {
-        0 => {
-            // Use editor
-            let default_str = if default_value.is_null() {
-                "{}".to_string()
-            } else if is_yaml {
-                serde_yaml::to_string(&default_value)?
-            } else {
-                serde_json::to_string_pretty(&default_value)?
-            };
-
-            if let Some(editor_result) =
-                Editor::new().extension(extension).edit(&default_str)?
-            {
-                if editor_result.trim().is_empty() {
-                    default_value
-                } else if is_yaml {
-                    serde_yaml::from_str(&editor_result)?
-                } else {
-                    serde_json::from_str(&editor_result)?
-                }
-            } else {
-                // User canceled editing
-                default_value
-            }
-        }
-        1 => {
-            // Enter inline
-            get_data_from_console(is_yaml, &prompt)?
-        }
+        0 => edit_with_external_editor(default_value.clone(), is_yaml, extension)?,
+        1 => get_data_from_console(is_yaml, &prompt)?,
         _ => default_value,
     };
 
