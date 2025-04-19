@@ -1,5 +1,5 @@
 use crate::{
-    config::Config,
+    config::{Config, QuestionRendered},
     dialoguer::{ask_question, confirm},
     error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
@@ -204,7 +204,18 @@ pub fn run(args: Args) -> Result<()> {
 
     for (key, question) in config.questions {
         loop {
-            let answer = match ask_question(&key, &question, engine.as_ref(), &answers) {
+            let QuestionRendered { help, default, ask_if, .. } =
+                question.render(&key, &json!(answers), engine.as_ref());
+
+            // Skip user prompting when the question's 'ask_if' condition in baker.yaml evaluates to false
+            // When skipped, the default value is automatically used instead
+            let skip_user_prompt = !ask_if;
+            if skip_user_prompt {
+                answers.insert(key.clone(), default.clone());
+                break;
+            }
+
+            let answer = match ask_question(&question, &default, help) {
                 Ok(answer) => answer,
                 Err(err) => match err {
                     Error::JSONParseError(_) | Error::YAMLParseError(_) => {
