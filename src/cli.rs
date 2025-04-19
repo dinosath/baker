@@ -204,7 +204,17 @@ pub fn run(args: Args) -> Result<()> {
 
     for (key, question) in config.questions {
         loop {
-            let answer = ask_question(&key, &question, engine.as_ref(), &answers)?;
+            let answer = match ask_question(&key, &question, engine.as_ref(), &answers) {
+                Ok(answer) => answer,
+                Err(err) => match err {
+                    Error::JSONParseError(_) | Error::YAMLParseError(_) => {
+                        println!("{}", err);
+                        continue;
+                    }
+                    _ => return Err(err),
+                },
+            };
+
             answers.insert(key.clone(), answer.clone());
             let _answers = serde_json::Value::Object(answers.clone());
 
