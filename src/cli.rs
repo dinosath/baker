@@ -212,15 +212,22 @@ pub fn run(args: Args) -> Result<()> {
             let QuestionRendered { help, default, ask_if, .. } =
                 question.render(&key, &json!(answers), engine.as_ref());
 
-            let answer_already_provided =
-                args.non_interactive && answers.contains_key(&key);
-            let skip_user_prompt = !ask_if || answer_already_provided;
+            // Determine if we should skip interactive prompting based on:
+            // 1. User explicitly requested non-interactive mode with --non-interactive flag, OR
+            // 2. The template's ask_if condition evaluated to false for this question
+            let skip_user_prompt = args.non_interactive || !ask_if;
 
             if skip_user_prompt {
-                if !answers.contains_key(&key) {
-                    answers.insert(key.clone(), default.clone());
+                // Skip to the next question if an answer for this key is already provided
+                if answers.contains_key(&key) {
+                    break;
                 }
-                break;
+
+                // Use the template's default value if one was specified
+                if !question.default.is_null() {
+                    answers.insert(key.clone(), default.clone());
+                    break;
+                }
             }
 
             let answer = match ask_question(&question, &default, help) {

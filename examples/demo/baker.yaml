@@ -4,7 +4,6 @@ questions:
   project_name:
     type: str
     help: Please enter the name of your project
-    ask_if: project_name is not defined
 
   project_author:
     type: str

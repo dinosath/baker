@@ -249,10 +249,47 @@ What is your name? [John]:
 For fully automated workflows like CI/CD pipelines, you can combine `--answers` with the `--non-interactive` flag to completely skip all prompts:
 
 ```bash
-baker template my-project --answers='{"name": "John", "license": "MIT"}' --non-interactive
+baker template my-project --answers='{"project_name": "Example Project"}' --non-interactive
 ```
 
-This will skip all prompts where answers are provided, using defaults for any questions without pre-supplied answers. No user interaction is required.
+In `--non-interactive` mode, Baker determines whether to skip user prompts based on two factors:
+
+1. The `--non-interactive` flag itself
+2. The template's `ask_if` conditions (if defined)
+
+When a prompt is skipped, Baker uses the following strategy to determine the answer:
+
+1. If an answer was already provided via the `--answers` parameter, use that value
+2. If a default value (`default`) exists in the template configuration, use that
+3. If neither exists, Baker will still prompt the user interactively for that question
+
+For example, if your template contains:
+
+```yaml
+schemaVersion: v1
+questions:
+  project_name:
+    type: str
+    help: Please enter the name of your project
+  project_author:
+    type: str
+    help: Please enter the author's name
+    default: Anonymous
+  use_tests:
+    type: bool
+    help: Will your project include tests?
+    default: true
+```
+
+And you run:
+
+```bash
+baker template my-project --answers='{"project_name": "Example"}' --non-interactive
+```
+
+Baker will automatically use "Example" for `project_name`, "Anonymous" for `project_author` (from the default value), and `true` for `use_tests` (from the default value).
+
+This is especially useful for CI/CD environments where interactive input isn't possible.
 
 #### Conditional Questions
 
