@@ -102,6 +102,11 @@ pub struct Args {
     #[arg(long = "skip-confirms", value_delimiter = ',')]
     #[arg(value_enum)]
     pub skip_confirms: Vec<SkipConfirm>,
+
+    /// Skip interactive prompts if answers are already provided
+    /// Use with --answers to create a fully non-interactive workflow
+    #[arg(long = "non-interactive")]
+    pub non_interactive: bool,
 }
 
 /// Parses command line arguments and returns the Args structure.
@@ -207,12 +212,22 @@ pub fn run(args: Args) -> Result<()> {
             let QuestionRendered { help, default, ask_if, .. } =
                 question.render(&key, &json!(answers), engine.as_ref());
 
-            // Skip user prompting when the question's 'ask_if' condition in baker.yaml evaluates to false
-            // When skipped, the default value is automatically used instead
-            let skip_user_prompt = !ask_if;
+            // Determine if we should skip interactive prompting based on:
+            // 1. User explicitly requested non-interactive mode with --non-interactive flag, OR
+            // 2. The template's ask_if condition evaluated to false for this question
+            let skip_user_prompt = args.non_interactive || !ask_if;
+
             if skip_user_prompt {
-                answers.insert(key.clone(), default.clone());
-                break;
+                // Skip to the next question if an answer for this key is already provided
+                if answers.contains_key(&key) {
+                    break;
+                }
+
+                // Use the template's default value if one was specified
+                if !question.default.is_null() {
+                    answers.insert(key.clone(), default.clone());
+                    break;
+                }
             }
 
             let answer = match ask_question(&question, &default, help) {
