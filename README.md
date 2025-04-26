@@ -15,6 +15,8 @@
   - [.bakerignore File](#bakerignore-file)
 - [Recipes](#recipes)
   - [Passing Default Answers](#passing-default-answers)
+  - [Non-Interactive Mode](#non-interactive-mode)
+  - [Conditional Questions](#conditional-questions)
   - [Debugging Templates](#debugging-templates)
 - [Hooks](#hooks)
   - [Customizing Hook Filenames](#customizing-hook-filenames)
@@ -241,6 +243,18 @@ The provided answer will be used as the default in the user prompt:
 ```
 What is your name? [John]:
 ```
+
+#### Non-Interactive Mode
+
+For fully automated workflows like CI/CD pipelines, you can combine `--answers` with the `--non-interactive` flag to completely skip all prompts:
+
+```bash
+baker template my-project --answers='{"name": "John", "license": "MIT"}' --non-interactive
+```
+
+This will skip all prompts where answers are provided, using defaults for any questions without pre-supplied answers. No user interaction is required.
+
+#### Conditional Questions
 
 To skip the prompt entirely, you can use the `ask_if` attribute:
 
