@@ -66,5 +66,17 @@ fn test_foreign_key_filter() {
 
 #[test]
 fn test_regex_filter() {
+    test_template("{{ 'hello world' | regex('^hello') }}", "true");
     test_template("{{ 'hello world' | regex('^hello.*') }}", "true");
+    test_template("{{ 'goodbye world' | regex('^hello.*') }}", "false");
+
+    test_template("{{ 'Hello World' | regex('hello') }}", "false");
+    test_template("{{ 'Hello World' | regex('(?i)hello') }}", "true");
+
+    test_template(r"{{ 'a+b=c' | regex('\\+') }}", "true");
+    test_template(r"{{ 'a+b=c' | regex('\\=') }}", "true");
+    test_template("{{ 'a+b=c' | regex('d') }}", "false");
+
+    test_template("{{ '' | regex('.*') }}", "true");
+    test_template("{{ '' | regex('.+') }}", "false");
 }
