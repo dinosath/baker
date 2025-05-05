@@ -1,4 +1,13 @@
 use crate::{error::Result, ioutils::path_to_str};
+pub use cruet::{
+    case::{
+        camel::to_camel_case, kebab::to_kebab_case, pascal::to_pascal_case,
+        screaming_snake::to_screaming_snake_case, snake::to_snake_case,
+        table::to_table_case, train::to_train_case,
+    },
+    string::{pluralize::to_plural, singularize::to_singular},
+    suffix::foreign_key::to_foreign_key,
+};
 use minijinja::Environment;
 use regex::Regex;
 use serde_json::json;
@@ -72,6 +81,16 @@ impl MiniJinjaRenderer {
             }
         });
 
+        env.add_filter("camel_case", to_camel_case);
+        env.add_filter("kebab_case", to_kebab_case);
+        env.add_filter("pascal_case", to_pascal_case);
+        env.add_filter("screaming_snake_case", to_screaming_snake_case);
+        env.add_filter("snake_case", to_snake_case);
+        env.add_filter("table_case", to_table_case);
+        env.add_filter("train_case", to_train_case);
+        env.add_filter("plural", to_plural);
+        env.add_filter("singular", to_singular);
+        env.add_filter("foreign_key", to_foreign_key);
         env.add_filter("regex", regex_filter);
 
         Self { env, default_context }
