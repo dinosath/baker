@@ -174,13 +174,16 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             return Ok(TemplateOperation::Ignore { source: rendered_entry });
         }
 
+         let is_template_file = self.is_template_file(&rendered_entry);
+        println!("template_entry: {},is_template_file: {}",template_entry.as_path().display(), is_template_file);
         // Handle different types of entries
         match (template_entry.is_file(), self.is_template_file(&rendered_entry)) {
             // Template file
             (true, true) => {
+                println!("template_entry: {}, is template file",template_entry.as_path().display());
+                println!("rendered_entry: {}, is template file",rendered_entry.as_path().display());
                 let template_content = fs::read_to_string(&template_entry)?;
                 let content = self.engine.render(&template_content, self.answers)?;
-
                 Ok(TemplateOperation::Write {
                     target: self.remove_template_suffix(&target_path)?,
                     content,
