@@ -10,6 +10,7 @@ pub use cruet::{
 };
 use minijinja::Environment;
 use regex::Regex;
+use log::warn;
 use serde_json::json;
 use std::path::Path;
 
@@ -60,13 +61,13 @@ pub struct MiniJinjaRenderer {
 }
 
 fn regex_filter(val: &str, re: &str) -> bool {
-    let re = Regex::new(re).unwrap();
-
-    if re.captures(val).is_none() {
-        return false;
+    match Regex::new(re) {
+        Ok(re) => re.is_match(val),
+        Err(err) => {
+            warn!("Invalid regex '{}': {}", re, err);
+            false
+        }
     }
-
-    true
 }
 
 impl MiniJinjaRenderer {
