@@ -8,9 +8,9 @@ pub use cruet::{
     string::{pluralize::to_plural, singularize::to_singular},
     suffix::foreign_key::to_foreign_key,
 };
+use log::warn;
 use minijinja::Environment;
 use regex::Regex;
-use log::warn;
 use serde_json::json;
 use std::path::Path;
 
