@@ -1,4 +1,5 @@
 use globset::GlobSet;
+use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -155,6 +156,16 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         Ok(self.output_root.as_ref().join(target_path))
     }
 
+    /// Returns true if the filename contains any MiniJinja block delimiters.
+    pub fn is_template_with_loop(&self, template_entry: PathBuf) -> bool {
+        let re = Regex::new(r"\{\%\s*for\s+\w+\s+in\s+\w+\s*\%\}").unwrap();
+        if let Some(filename) = template_entry.file_name().and_then(|n| n.to_str()) {
+            re.is_match(filename)
+        } else {
+            false
+        }
+    }
+
     /// Processes a template entry and determines the appropriate operation.
     ///
     /// # Arguments
@@ -174,7 +185,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             return Ok(TemplateOperation::Ignore { source: rendered_entry });
         }
 
-         let is_template_file = self.is_template_file(&rendered_entry);
+        let is_template_file = self.is_template_file(&rendered_entry);
         println!("template_entry: {},is_template_file: {}",template_entry.as_path().display(), is_template_file);
         // Handle different types of entries
         match (template_entry.is_file(), self.is_template_file(&rendered_entry)) {
@@ -183,6 +194,19 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 println!("template_entry: {}, is template file",template_entry.as_path().display());
                 println!("rendered_entry: {}, is template file",rendered_entry.as_path().display());
                 let template_content = fs::read_to_string(&template_entry)?;
+                if self.is_template_with_loop(template_entry.clone()) {
+                    println!("template_entry: {}, is loop template file", template_entry.as_path().display());
+                    let template = template_entry.as_path().as_os_str().to_str().unwrap();
+                    let re = Regex::new(r"(\{\%\s*endfor\s*\%\})").unwrap();
+                    let content_to_inject = format!("####content####{}---$1", template_content);
+                    println!("content_to_inject: {}", content_to_inject);
+                    let result = re.replace_all(template, content_to_inject);
+                    println!("result: {}", result);
+                    let content = self.engine.render(&result, self.answers)?;
+                    println!("content: {}", content);
+                    println!("target_path: {}", target_path.display());
+
+                }
                 let content = self.engine.render(&template_content, self.answers)?;
                 Ok(TemplateOperation::Write {
                     target: self.remove_template_suffix(&target_path)?,
@@ -901,5 +925,22 @@ mod tests {
             }
             _ => panic!("Expected ProcessError"),
         }
+    }
+
+    #[test]
+    fn detects_jinja_blocks() {
+        assert!(is_template_with_loop("file_{% for x in y %}.txt"));
+        assert!(is_template_with_loop("file_{%- for x in y %}.txt"));
+        assert!(is_template_with_loop("file_{% for x in y -%}.txt"));
+        assert!(is_template_with_loop("file_{%- for x in y -%}.txt"));
+        assert!(is_template_with_loop("file_%}.txt"));
+        assert!(is_template_with_loop("file_{%.txt"));
+    }
+
+    #[test]
+    fn does_not_detect_when_absent() {
+        assert!(!is_template_with_loop("file_{{ var }}.txt"));
+        assert!(!is_template_with_loop("file_name.txt"));
+        assert!(!is_template_with_loop(""));
     }
 }
