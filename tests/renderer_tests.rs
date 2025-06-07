@@ -80,3 +80,10 @@ fn test_regex_filter() {
     test_template("{{ '' | regex('.*') }}", "true");
     test_template("{{ '' | regex('.+') }}", "false");
 }
+
+#[test]
+fn test_regex_filter_invalid_regex() {
+    let renderer = MiniJinjaRenderer::new();
+    let result = renderer.render("{{ 'hello' | regex('[') }}", &json!({}));
+    assert_eq!(result.unwrap(), "false");
+}
