@@ -1,0 +1,5 @@
+project_name: project name is filters
+project_name_snakecase: project_name_is_filters
+project_name_kebabcase: project-name-is-filters
+project_name_camelcase: projectNameIsFilters
+project_name_pascalcase: ProjectNameIsFilters
