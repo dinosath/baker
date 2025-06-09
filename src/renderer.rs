@@ -120,21 +120,8 @@ impl MiniJinjaRenderer {
             context.clone()
         };
 
-        let tmpl = match env.get_template("temp") {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("MiniJinja get_template error: {e}");
-                return Err(e.into());
-            }
-        };
-
-        match tmpl.render(merged_context) {
-            Ok(res) => Ok(res),
-            Err(e) => {
-                eprintln!("MiniJinja render error: {e}");
-                Err(e.into())
-            }
-        }
+        let tmpl = env.get_template("temp")?;
+        Ok(tmpl.render(merged_context)?)
     }
 }
 

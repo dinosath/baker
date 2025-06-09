@@ -165,7 +165,17 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     ///
     pub fn process(&self, template_entry: P) -> Result<TemplateOperation> {
         let template_entry = template_entry.as_ref().to_path_buf();
-        let rendered_entry = self.render_template_entry(&template_entry)?;
+        let rendered_entry = match self.render_template_entry(&template_entry) {
+            Ok(entry) => entry,
+            Err(e) => {
+                eprintln!(
+                    "Render error in template entry '{}': {}",
+                    template_entry.display(),
+                    e
+                );
+                return Err(e);
+            }
+        };
         let target_path = self.get_target_path(&rendered_entry, &template_entry)?;
         let target_exists = target_path.exists();
 
@@ -179,8 +189,24 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             // Template file
             (true, true) => {
                 let template_content = fs::read_to_string(&template_entry)?;
-                let content = self.engine.render(&template_content, self.answers)?;
-
+                let content = match self.engine.render(&template_content, self.answers) {
+                    Ok(content) => content,
+                    Err(e) => {
+                        eprintln!(
+                            "Render error in file '{}': {}",
+                            template_entry.display(),
+                            e
+                        );
+                        return Err(Error::ProcessError {
+                            source_path: template_entry.display().to_string(),
+                            e: format!(
+                                "Render error in file '{}': {}",
+                                template_entry.display(),
+                                e
+                            ),
+                        });
+                    }
+                };
                 Ok(TemplateOperation::Write {
                     target: self.remove_template_suffix(&target_path)?,
                     content,
