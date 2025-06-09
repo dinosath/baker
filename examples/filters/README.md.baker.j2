@@ -1,5 +1,11 @@
 project_name: {{project_name}}
-project_name_snakecase: {{ project_name | snakecase }}
-project_name_kebabcase: {{ project_name | kebabcase }}
-project_name_camelcase: {{ project_name | camelcase }}
-project_name_pascalcase: {{ project_name | pascalcase }}
+project_name in camel case: {{ project_name | camel_case }}
+project_name in kebab case: {{ project_name | kebab_case }}
+project_name in pascal case: {{ project_name | pascal_case }}
+project_name in screaming snake case: {{ project_name | screaming_snake_case }}
+project_name in snake case: {{ project_name | snake_case }}
+project_name in table case: {{ project_name | table_case }}
+project_name in train case: {{ project_name | train_case }}
+string 'project' in plural: {{ 'project' | plural }}
+string 'projects' in singular: {{ 'projects' | singular }}
+project_name in foreign key: {{ project_name | foreign_key }}
