@@ -1,9 +1,13 @@
+use dialoguer::Error as DialoguerError;
 use std::process::ExitStatus;
 use thiserror::Error;
 
 /// Represents all possible errors that can occur in Baker
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Dialoguer error: {0}")]
+    DialoguerError(#[from] DialoguerError),
+
     #[error("Failed to parse JSON: {0}")]
     JSONParseError(#[from] serde_json::Error),
 
