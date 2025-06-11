@@ -1,0 +1,31 @@
+schemaVersion: v1
+
+questions:
+  database_config:
+    type: json
+    help: Configure your database settings
+    schema: |
+      {
+        "type": "object",
+        "required": ["engine", "host", "port"],
+        "properties": {
+          "engine": {
+            "type": "string",
+            "enum": ["postgresql", "mysql", "sqlite", "mongodb"]
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        }
+      }
+    default: |
+      {
+        "engine": "postgresql",
+        "host": "localhost",
+        "port": 5432
+      }
