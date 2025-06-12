@@ -84,7 +84,7 @@ pub fn prompt_text(
     };
 
     let input = if let Some(secret) = &question.secret {
-        let mut password = Password::new();
+        let password = Password::new();
         let mut password = password.with_prompt(&prompt);
 
         if secret.confirm {

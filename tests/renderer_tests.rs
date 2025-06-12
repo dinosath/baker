@@ -102,8 +102,7 @@ fn test_demo_copy() {
         non_interactive: true,
     };
     run(args).unwrap();
-    assert!(!dir_diff::is_different(tmp_dir.path().to_path_buf(), "tests/expected/demo")
-        .unwrap());
+    assert!(!dir_diff::is_different(tmp_dir.path(), "tests/expected/demo").unwrap());
 }
 
 #[test]
@@ -119,11 +118,8 @@ fn test_demo_copy_use_tests_false() {
         non_interactive: true,
     };
     run(args).unwrap();
-    assert!(!dir_diff::is_different(
-        tmp_dir.path().to_path_buf(),
-        "tests/expected/demo_tests_false"
-    )
-    .unwrap());
+    assert!(!dir_diff::is_different(tmp_dir.path(), "tests/expected/demo_tests_false")
+        .unwrap());
 }
 
 #[test]
@@ -139,11 +135,7 @@ fn test_filters_example() {
         non_interactive: true,
     };
     run(args).unwrap();
-    assert!(!dir_diff::is_different(
-        tmp_dir.path().to_path_buf(),
-        "tests/expected/filters"
-    )
-    .unwrap());
+    assert!(!dir_diff::is_different(tmp_dir.path(), "tests/expected/filters").unwrap());
 }
 
 #[test]
