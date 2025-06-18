@@ -166,7 +166,7 @@ impl<S: AsRef<str>> GitLoader<S> {
                 if !path_part.is_empty() {
                     return path_part
                         .split('/')
-                        .last()
+                        .next_back()
                         .unwrap_or("template")
                         .trim_end_matches(".git")
                         .to_string();
@@ -175,7 +175,7 @@ impl<S: AsRef<str>> GitLoader<S> {
         }
 
         // Handle standard URLs (HTTPS, git://, etc.)
-        let result = repo_url.split('/').last().unwrap_or("").trim_end_matches(".git");
+        let result = repo_url.split('/').next_back().unwrap_or("").trim_end_matches(".git");
 
         if result.is_empty() || result.contains('@') || result.contains(':') {
             "template".to_string()
