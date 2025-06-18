@@ -151,11 +151,8 @@ fn test_jsonschema_default() {
         non_interactive: true,
     };
     run(args).unwrap();
-    assert!(!dir_diff::is_different(
-        tmp_dir.path(),
-        "tests/expected/jsonschema-default"
-    )
-    .unwrap());
+    assert!(!dir_diff::is_different(tmp_dir.path(), "tests/expected/jsonschema-default")
+        .unwrap());
 }
 
 #[test]
@@ -171,9 +168,5 @@ fn test_jsonschema() {
         non_interactive: true,
     };
     run(args).unwrap();
-    assert!(!dir_diff::is_different(
-        tmp_dir.path(),
-        "tests/expected/jsonschema"
-    )
-    .unwrap());
+    assert!(!dir_diff::is_different(tmp_dir.path(), "tests/expected/jsonschema").unwrap());
 }

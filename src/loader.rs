@@ -175,7 +175,8 @@ impl<S: AsRef<str>> GitLoader<S> {
         }
 
         // Handle standard URLs (HTTPS, git://, etc.)
-        let result = repo_url.split('/').next_back().unwrap_or("").trim_end_matches(".git");
+        let result =
+            repo_url.split('/').next_back().unwrap_or("").trim_end_matches(".git");
 
         if result.is_empty() || result.contains('@') || result.contains(':') {
             "template".to_string()
