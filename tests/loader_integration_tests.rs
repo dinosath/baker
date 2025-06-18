@@ -1,4 +1,4 @@
-use baker::loader::{TemplateSource, TemplateLoader, LocalLoader};
+use baker::loader::{LocalLoader, TemplateLoader, TemplateSource};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -88,6 +88,10 @@ fn test_local_path_identification() {
     ];
 
     for path in local_paths {
-        assert!(!TemplateSource::is_git_url(path), "Incorrectly identified {} as git URL", path);
+        assert!(
+            !TemplateSource::is_git_url(path),
+            "Incorrectly identified {} as git URL",
+            path
+        );
     }
 }
