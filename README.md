@@ -35,6 +35,7 @@
   - [Conditional questions](#conditional-questions)
 - [Built-in Filters](#built-in-filters)
 - [Comparing Baker to other project generators](#comparing-baker-to-other-project-generators)
+- [Community Templates](#community-templates)
 
 ## Installation
 
@@ -977,6 +978,10 @@ Baker provides a set of built-in filters and functions to enhance the flexibilit
 | 🟢 **Language-agnostic scaffolding**         | ✅ Works with any language / stack                                             | ✅ Yes         | ❌ Rust-focused         | ✅ Yes                 | ✅ Yes                    | ⚠️ JS-centric                 |
 | 🟢 **Answers accessible in later questions** | ✅ All previous answers available via MiniJinja in `default`, `help`, `ask_if` | ⚠️ Limited     | ⚠️ Partial (via Rhai)   | ✅ Yes (Jinja context) | ❌                        | ✅ Full control in JS         |
 | 🟢 **Templated engine**                      | ✅ Fast, safe, embedded Jinja2-like templating in Rust                         | Tera           | Liquid                  | Jinja2                 | Jinja2                    | EJS                           |
+
+## Community Templates
+
+See [here](https://github.com/topics/baker-template) for a list of community maintained templates built with baker.
 
 ### ℹ️ Disclaimer
 
