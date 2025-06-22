@@ -13,6 +13,7 @@
   - [Files with .baker.j2 extension](#files-with-bakerj2-extension)
   - [Templated File Names](#templated-file-names)
   - [.bakerignore File](#bakerignore-file)
+  - [Importing Jinja templates and macros](#importing-jinja-templates-and-macros)
 - [Recipes](#recipes)
   - [Passing Default Answers](#passing-default-answers)
   - [Non-Interactive Mode](#non-interactive-mode)
@@ -216,6 +217,25 @@ const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
     "baker.json",
 ];
 ```
+
+## Importing Jinja templates and macros
+
+You can specify multiple patterns for files to be included in the template engine. Then you can [include templates](https://docs.rs/minijinja/latest/minijinja/syntax/index.html#-include-) or [import macros](https://docs.rs/minijinja/latest/minijinja/syntax/index.html#-import-) in your templates.
+
+#### Example:
+
+```yaml
+schemaVersion: v1
+template_globs:
+  - "*.tpl"
+  - "*.jinja"
+questions:
+  project_name:
+    type: str
+    help: Please enter the name of your project
+```
+
+This will include all files ending with .tpl and .jinja in the template engine, allowing you to use them in your templates.
 
 ## Recipes
 

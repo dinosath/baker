@@ -4,6 +4,7 @@ use crate::{
     error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,
+    import::add_templates_in_renderer,
     ioutils::{
         copy_file, create_dir_all, get_output_dir, parse_string_to_json, read_from,
         write_file,
@@ -142,7 +143,7 @@ pub fn get_args() -> Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
-    let engine: Box<dyn TemplateRenderer> = Box::new(MiniJinjaRenderer::new());
+    let mut engine: Box<dyn TemplateRenderer> = Box::new(MiniJinjaRenderer::new());
 
     let output_root = get_output_dir(args.output_dir, args.force)?;
 
@@ -155,6 +156,8 @@ pub fn run(args: Args) -> Result<()> {
     let config = Config::load_config(&template_root)?;
 
     let Config::V1(config) = config;
+
+    add_templates_in_renderer(&template_root, &config, engine.as_mut());
 
     let pre_hook_filename = engine.render(&config.pre_hook_filename, &json!({}))?;
     let post_hook_filename = engine.render(&config.post_hook_filename, &json!({}))?;

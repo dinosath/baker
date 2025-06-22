@@ -74,16 +74,21 @@ pub struct Question {
     #[serde(default = "get_default_validation")]
     pub validation: Validation,
 }
-
 /// Main configuration structure holding all questions
 #[derive(Debug, Deserialize)]
 pub struct ConfigV1 {
+    #[serde(default = "get_default_template_globs")]
+    pub template_globs: Vec<String>,
     #[serde(default)]
     pub questions: IndexMap<String, Question>,
     #[serde(default = "get_default_post_hook_filename")]
     pub post_hook_filename: String,
     #[serde(default = "get_default_pre_hook_filename")]
     pub pre_hook_filename: String,
+}
+
+fn get_default_template_globs() -> Vec<String> {
+    Vec::new()
 }
 
 fn get_default_post_hook_filename() -> String {
