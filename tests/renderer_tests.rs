@@ -200,4 +200,25 @@ mod tests {
         run(args).unwrap();
         assert!(!dir_diff::is_different(tmp_dir.path(), "tests/expected/import").unwrap());
     }
+
+    #[test]
+    fn test_import_directory() {
+        let _ = env_logger::try_init();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let args = Args {
+            template: "examples/import_directory".to_string(),
+            output_dir: tmp_dir.path().to_path_buf(),
+            force: true,
+            verbose: true,
+            answers: None,
+            skip_confirms: vec![All],
+            non_interactive: true,
+        };
+        run(args).unwrap();
+        assert!(!dir_diff::is_different(
+            tmp_dir.path(),
+            "tests/expected/import_directory"
+        )
+        .unwrap());
+    }
 }
