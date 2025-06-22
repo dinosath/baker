@@ -143,7 +143,9 @@ impl TemplateRenderer for MiniJinjaRenderer {
         name: &str,
         template: &str,
     ) -> Result<(), minijinja::Error> {
-        self.env.add_template_owned(name.to_string(), template.to_string())
+        // Normalize the template name for cross-platform compatibility
+        let normalized_name = name.replace("\\", "/");
+        self.env.add_template_owned(normalized_name, template.to_string())
     }
 
     fn render(&self, template: &str, context: &serde_json::Value) -> Result<String> {
