@@ -872,83 +872,94 @@ Baker provides a set of built-in filters and functions to enhance the flexibilit
 
 ### Available Filters
 
-| **Filter Name**           | **Description**                                                                 |
-|----------------------------|---------------------------------------------------------------------------------|
-| `camel_case`              | Converts a string to camelCase.                                                 |
-| `kebab_case`              | Converts a string to kebab-case.                                                |
-| `pascal_case`             | Converts a string to PascalCase.                                                |
-| `screaming_snake_case`    | Converts a string to SCREAMING_SNAKE_CASE.                                       |
-| `snake_case`              | Converts a string to snake_case.                                                |
-| `table_case`              | Converts a string to table_case (lowercase with underscores).                   |
-| `train_case`              | Converts a string to Train-Case.                                                |
-| `plural`                  | Converts a word to its plural form.                                             |
-| `singular`                | Converts a word to its singular form.                                           |
-| `foreign_key`             | Converts a string to a foreign key format (e.g., `user_id`).                    |
-| `regex`                   | Applies a regular expression to transform a string.                             |
+| **Filter Name**        | **Description**                                               |
+| ---------------------- | ------------------------------------------------------------- |
+| `camel_case`           | Converts a string to camelCase.                               |
+| `kebab_case`           | Converts a string to kebab-case.                              |
+| `pascal_case`          | Converts a string to PascalCase.                              |
+| `screaming_snake_case` | Converts a string to SCREAMING_SNAKE_CASE.                    |
+| `snake_case`           | Converts a string to snake_case.                              |
+| `table_case`           | Converts a string to table_case (lowercase with underscores). |
+| `train_case`           | Converts a string to Train-Case.                              |
+| `plural`               | Converts a word to its plural form.                           |
+| `singular`             | Converts a word to its singular form.                         |
+| `foreign_key`          | Converts a string to a foreign key format (e.g., `user_id`).  |
+| `regex`                | Applies a regular expression to transform a string.           |
 
 ### Usage Examples
 
 #### 1. Camel Case Filter
+
 ```yaml
 {{ "hello world" | camel_case }}
 // Output: "helloWorld"
 ```
 
 #### 2. Kebab Case Filter
+
 ```yaml
 {{ "hello world" | kebab_case }}
 // Output: "hello-world"
 ```
 
 #### 3. Pascal Case Filter
+
 ```yaml
 {{ "hello world" | pascal_case }}
 // Output: "HelloWorld"
 ```
 
 #### 4. Screaming Snake Case Filter
+
 ```yaml
 {{ "hello world" | screaming_snake_case }}
 // Output: "HELLO_WORLD"
 ```
 
 #### 5. Snake Case Filter
+
 ```yaml
 {{ "hello world" | snake_case }}
 // Output: "hello_world"
 ```
 
 #### 6. Table Case Filter
+
 ```yaml
 {{ "Hello World" | table_case }}
 // Output: "hello_world"
 ```
 
 #### 7. Train Case Filter
+
 ```yaml
 {{ "hello world" | train_case }}
 // Output: "Hello-World"
 ```
 
 #### 8. Plural Filter
+
 ```yaml
 {{ "car" | plural }}
 // Output: "cars"
 ```
 
 #### 9. Singular Filter
+
 ```yaml
 {{ "cars" | singular }}
 // Output: "car"
 ```
 
 #### 10. Foreign Key Filter
+
 ```yaml
 {{ "User" | foreign_key }}
 // Output: "user_id"
 ```
 
 #### 11. Regex Filter
+
 ```yaml
 {{ "hello world" | regex: "world", "Rust" }}
 // Output: "hello Rust"
@@ -979,10 +990,10 @@ Baker provides a set of built-in filters and functions to enhance the flexibilit
 | 🟢 **Answers accessible in later questions** | ✅ All previous answers available via MiniJinja in `default`, `help`, `ask_if` | ⚠️ Limited     | ⚠️ Partial (via Rhai)   | ✅ Yes (Jinja context) | ❌                        | ✅ Full control in JS         |
 | 🟢 **Templated engine**                      | ✅ Fast, safe, embedded Jinja2-like templating in Rust                         | Tera           | Liquid                  | Jinja2                 | Jinja2                    | EJS                           |
 
-## Community Templates
-
-See [here](https://github.com/topics/baker-template) for a list of community maintained templates built with baker.
-
 ### ℹ️ Disclaimer
 
 This comparison was made based on available documentation. If you notice any **inaccuracies or outdated information**, please [create an issue](https://github.com/aliev/baker/issues) — I'll be happy to update the table accordingly.
+
+## Community Templates
+
+See [here](https://github.com/topics/baker-template) for a list of community maintained templates built with baker.
