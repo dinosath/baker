@@ -192,7 +192,7 @@ impl Question {
         } else if let Some(default_str) = default.as_str() {
             // If it's a string, try to render it as a template first
             let rendered_str =
-                engine.render(default_str, answers).unwrap_or(default_str.to_string());
+                engine.render(default_str, answers, Some("default_value")).unwrap_or(default_str.to_string());
 
             // Parse the string based on the question type
             match question_type {
@@ -236,7 +236,7 @@ impl Question {
                     // Trying to render given string.
                     // Otherwise returns an empty string.
                     let default_rendered =
-                        engine.render(default_str, answers).unwrap_or_default();
+                        engine.render(default_str, answers, Some("default_value")).unwrap_or_default();
                     serde_json::Value::String(default_rendered)
                 }
                 QuestionType::Json | QuestionType::Yaml => self
@@ -251,7 +251,7 @@ impl Question {
 
         // Sometimes "help" contain the value with the template strings.
         // This function renders it and returns rendered value.
-        let help = engine.render(&self.help, answers).unwrap_or(self.help.clone());
+        let help = engine.render(&self.help, answers, Some("help")).unwrap_or(self.help.clone());
 
         let ask_if = engine.execute_expression(&self.ask_if, answers).unwrap_or(true);
 

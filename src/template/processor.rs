@@ -179,7 +179,10 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             // Template file
             (true, true) => {
                 let template_content = fs::read_to_string(&template_entry)?;
-                let content = self.engine.render(&template_content, self.answers)?;
+                let template_name =
+                    template_entry.file_name().and_then(|name| name.to_str());
+                let content =
+                    self.engine.render(&template_content, self.answers, template_name)?;
 
                 Ok(TemplateOperation::Write {
                     target: self.remove_template_suffix(&target_path)?,

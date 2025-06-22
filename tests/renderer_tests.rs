@@ -7,7 +7,7 @@ mod tests {
 
     fn test_template(template: &str, expected: &str) {
         let renderer = MiniJinjaRenderer::new();
-        let result = renderer.render(template, &json!({})).unwrap();
+        let result = renderer.render(template, &json!({}), None).unwrap();
         assert_eq!(result, expected);
     }
 
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_regex_filter_invalid_regex() {
         let renderer = MiniJinjaRenderer::new();
-        let result = renderer.render("{{ 'hello' | regex('[') }}", &json!({}));
+        let result = renderer.render("{{ 'hello' | regex('[') }}", &json!({}), None);
         assert_eq!(result.unwrap(), "false");
     }
 

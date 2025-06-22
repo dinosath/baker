@@ -159,8 +159,16 @@ pub fn run(args: Args) -> Result<()> {
 
     add_templates_in_renderer(&template_root, &config, engine.as_mut());
 
-    let pre_hook_filename = engine.render(&config.pre_hook_filename, &json!({}))?;
-    let post_hook_filename = engine.render(&config.post_hook_filename, &json!({}))?;
+    let pre_hook_filename = engine.render(
+        &config.pre_hook_filename,
+        &json!({}),
+        Some(&config.pre_hook_filename),
+    )?;
+    let post_hook_filename = engine.render(
+        &config.post_hook_filename,
+        &json!({}),
+        Some(&config.post_hook_filename),
+    )?;
 
     let execute_hooks = confirm_hook_execution(
         &template_root,
