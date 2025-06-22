@@ -171,8 +171,7 @@ impl TemplateRenderer for MiniJinjaRenderer {
         context: &serde_json::Value,
     ) -> Result<String> {
         let path_str = path_to_str(template_path)?;
-        let template_name =
-            template_path.file_name().and_then(|name| name.to_str()).map(|s| s.as_ref());
+        let template_name = template_path.file_name().and_then(|name| name.to_str());
         self.render_internal(path_str, context, template_name)
     }
 

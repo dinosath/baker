@@ -57,7 +57,11 @@ pub fn validate_answer(
 
             if !is_valid {
                 let error_message = engine
-                    .render(&question.validation.error_message, answers, Some("validation_error"))
+                    .render(
+                        &question.validation.error_message,
+                        answers,
+                        Some("validation_error"),
+                    )
                     .unwrap_or_else(|_| "Validation failed".to_string());
                 return Err(ValidationError::FieldValidation(error_message));
             }
