@@ -86,6 +86,14 @@ mod tests {
     }
 
     #[test]
+    fn test_loop_controls() {
+        test_template(
+            "{% for i in range(1, 6) %}{% if i == 4 %}{% break %}{% endif %}{{ i }}{% if not loop.last %} {% endif %}{% endfor %}",
+            "1 2 3 ",
+        );
+    }
+
+    #[test]
     fn test_regex_filter_invalid_regex() {
         let renderer = MiniJinjaRenderer::new();
         let result = renderer.render("{{ 'hello' | regex('[') }}", &json!({}), None);
