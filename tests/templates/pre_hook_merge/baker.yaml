@@ -1,0 +1,9 @@
+schemaVersion: v1
+
+questions:
+  username:
+    type: str
+    help: Username
+  password:
+    type: str
+    help: Password

@@ -189,14 +189,11 @@ pub fn run(args: Args) -> Result<()> {
         None
     };
 
-    // Retrieves answers and parses them directly to avoid type incompatibility
-    let mut answers = if let Some(answers_arg) = args.answers {
-        // From command line argument
-        let answers_str =
-            if answers_arg == "-" { read_from(std::io::stdin())? } else { answers_arg };
-        parse_string_to_json(answers_str)?
-    } else if let Some(pre_hook_stdout) = pre_hook_stdout {
-        // Read and print the raw output
+    // Retrieve answers from pre-hook and command line and merge them
+    let mut answers = serde_json::Map::new();
+
+    if let Some(pre_hook_stdout) = pre_hook_stdout {
+        // Read and print the raw output from pre hook
         let result = read_from(pre_hook_stdout).unwrap_or_default();
 
         log::debug!(
@@ -204,7 +201,7 @@ pub fn run(args: Args) -> Result<()> {
             result
         );
 
-        serde_json::from_str::<serde_json::Value>(&result).map_or_else(
+        let pre_answers = serde_json::from_str::<serde_json::Value>(&result).map_or_else(
             |e| {
                 log::warn!("Failed to parse hook output as JSON: {}", e);
                 serde_json::Map::new()
@@ -213,10 +210,17 @@ pub fn run(args: Args) -> Result<()> {
                 serde_json::Value::Object(map) => map,
                 _ => serde_json::Map::new(),
             },
-        )
-    } else {
-        serde_json::Map::new()
-    };
+        );
+        answers.extend(pre_answers);
+    }
+
+    if let Some(answers_arg) = args.answers {
+        // From command line argument
+        let answers_str =
+            if answers_arg == "-" { read_from(std::io::stdin())? } else { answers_arg };
+        let cli_answers = parse_string_to_json(answers_str)?;
+        answers.extend(cli_answers);
+    }
 
     for (key, question) in config.questions {
         loop {
