@@ -44,8 +44,7 @@ pub fn validate_answer(
             if let Some(schema) = &question.schema {
                 validate_with_schema(answer, schema).map_err(|e| {
                     ValidationError::JsonSchema(format!(
-                        "JSON Schema validation error: {}",
-                        e
+                        "JSON Schema validation error: {e}"
                     ))
                 })?;
             }

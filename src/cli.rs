@@ -194,13 +194,12 @@ pub fn run(args: Args) -> Result<()> {
 
     if let Some(result) = pre_hook_stdout {
         log::debug!(
-            "Pre-hook stdout content (attempting to parse as JSON answers): {}",
-            result
+            "Pre-hook stdout content (attempting to parse as JSON answers): {result}"
         );
 
         let pre_answers = serde_json::from_str::<serde_json::Value>(&result).map_or_else(
             |e| {
-                log::warn!("Failed to parse hook output as JSON: {}", e);
+                log::warn!("Failed to parse hook output as JSON: {e}");
                 serde_json::Map::new()
             },
             |value| match value {
@@ -246,7 +245,7 @@ pub fn run(args: Args) -> Result<()> {
                 Ok(answer) => answer,
                 Err(err) => match err {
                     Error::JSONParseError(_) | Error::YAMLParseError(_) => {
-                        println!("{}", err);
+                        println!("{err}");
                         continue;
                     }
                     _ => return Err(err),
@@ -259,8 +258,8 @@ pub fn run(args: Args) -> Result<()> {
             match validate_answer(&question, &answer, engine.as_ref(), &_answers) {
                 Ok(_) => break,
                 Err(err) => match err {
-                    ValidationError::JsonSchema(msg) => println!("{}", msg),
-                    ValidationError::FieldValidation(msg) => println!("{}", msg),
+                    ValidationError::JsonSchema(msg) => println!("{msg}"),
+                    ValidationError::FieldValidation(msg) => println!("{msg}"),
                 },
             }
         }
@@ -321,11 +320,11 @@ pub fn run(args: Args) -> Result<()> {
                 };
 
                 let message = file_operation.get_message(user_confirmed_overwrite);
-                log::info!("{}", message);
+                log::info!("{message}");
             }
             Err(e) => match e {
-                Error::ProcessError { .. } => log::warn!("{}", e),
-                _ => log::error!("{}", e),
+                Error::ProcessError { .. } => log::warn!("{e}"),
+                _ => log::error!("{e}"),
             },
         }
     }
@@ -337,7 +336,7 @@ pub fn run(args: Args) -> Result<()> {
             run_hook(&template_root, &output_root, &post_hook_file, Some(&answers))?;
 
         if let Some(result) = post_hook_stdout {
-            log::debug!("Post-hook stdout content: {}", result);
+            log::debug!("Post-hook stdout content: {result}");
         }
     }
 

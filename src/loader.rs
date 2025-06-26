@@ -21,7 +21,7 @@ impl std::fmt::Display for TemplateSource {
             TemplateSource::FileSystem(path) => {
                 write!(f, "local path: '{}'", path.display())
             }
-            TemplateSource::Git(repo) => write!(f, "git repository: '{}'", repo),
+            TemplateSource::Git(repo) => write!(f, "git repository: '{repo}'"),
         }
     }
 }
@@ -194,7 +194,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
     fn load(&self) -> Result<PathBuf> {
         let repo_url = self.repo.as_ref();
 
-        log::debug!("Cloning repository '{}'", repo_url);
+        log::debug!("Cloning repository '{repo_url}'");
 
         let repo_name = Self::extract_repo_name(repo_url);
         let clone_path = PathBuf::from(&repo_name);
@@ -202,7 +202,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
         if clone_path.exists() {
             let response = confirm(
                 self.skip_overwrite_check,
-                format!("Directory '{}' already exists. Replace it?", repo_name),
+                format!("Directory '{repo_name}' already exists. Replace it?"),
             )?;
             if response {
                 fs::remove_dir_all(&clone_path)?;
@@ -223,7 +223,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             git2::Cred::ssh_key(
                 username_from_url.unwrap_or("git"),
                 None,
-                std::path::Path::new(&format!("{}/.ssh/id_rsa", home)),
+                std::path::Path::new(&format!("{home}/.ssh/id_rsa")),
                 None,
             )
         });
