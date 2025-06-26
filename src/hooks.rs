@@ -1,7 +1,7 @@
 use serde::Serialize;
-use std::io::Write;
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{ChildStdout, Command, Stdio};
+use std::process::{Command, Stdio};
 
 use crate::dialoguer::confirm;
 use crate::error::{Error, Result};
@@ -63,7 +63,7 @@ pub fn get_hook_files<P: AsRef<Path>>(
 /// * `context` - Template context data
 ///
 /// # Returns
-/// * `Result<Option<ChildStdout>>` - Success or error status of hook execution
+/// * `Result<Option<String>>` - Success or error status of hook execution, with stdout content
 ///
 /// # Notes
 /// - Hook scripts receive context data as JSON via stdin
@@ -74,7 +74,7 @@ pub fn run_hook<P: AsRef<Path>>(
     output_dir: P,
     hook_path: P,
     answers: Option<&serde_json::Value>,
-) -> Result<Option<ChildStdout>> {
+) -> Result<Option<String>> {
     let hook_path = hook_path.as_ref();
 
     let template_dir = path_to_str(&template_dir)?;
@@ -95,11 +95,23 @@ pub fn run_hook<P: AsRef<Path>>(
         .stderr(Stdio::inherit())
         .spawn()?;
 
-    // Write context to stdin
+    // Write context to stdin and close it
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(&output_data)?;
         stdin.write_all(b"\n")?;
+        // Explicitly close stdin to signal end of input
+        drop(stdin);
     }
+
+    // Read stdout before waiting for the process to complete
+    let output = if let Some(stdout) = child.stdout.take() {
+        let mut output = String::new();
+        let mut reader = BufReader::new(stdout);
+        reader.read_to_string(&mut output)?;
+        Some(output)
+    } else {
+        None
+    };
 
     // Wait for the process to complete
     let status = child.wait()?;
@@ -111,7 +123,7 @@ pub fn run_hook<P: AsRef<Path>>(
         });
     }
 
-    Ok(child.stdout)
+    Ok(output)
 }
 
 pub fn confirm_hook_execution<P: AsRef<Path>>(

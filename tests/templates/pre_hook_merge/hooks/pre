@@ -1,0 +1,2 @@
+#!/bin/sh
+echo '{"username": "hookuser", "password": "hookpass"}'
