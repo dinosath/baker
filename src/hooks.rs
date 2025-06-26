@@ -97,8 +97,20 @@ pub fn run_hook<P: AsRef<Path>>(
 
     // Write context to stdin and close it
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(&output_data)?;
-        stdin.write_all(b"\n")?;
+        // Write context data to stdin, handling broken pipe gracefully
+        if let Err(e) = stdin.write_all(&output_data) {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                log::debug!("Hook closed stdin before reading context data (broken pipe) - this is normal for hooks that don't read input");
+            } else {
+                log::warn!("Failed to write context data to hook stdin: {e}");
+            }
+        } else if let Err(e) = stdin.write_all(b"\n") {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                log::debug!("Hook closed stdin before reading newline (broken pipe)");
+            } else {
+                log::warn!("Failed to write newline to hook stdin: {e}");
+            }
+        }
         // Explicitly close stdin to signal end of input
         drop(stdin);
     }

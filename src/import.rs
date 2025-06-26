@@ -44,7 +44,7 @@ pub fn add_templates_in_renderer(
                     .map(|content| (rel_path_str.to_owned(), content))
             })
             .for_each(|(filename, content)| {
-                debug!("Adding template: {}", filename);
+                debug!("Adding template: {filename}");
                 engine.add_template(&filename, &content).unwrap();
             });
     } else {
@@ -77,7 +77,7 @@ pub fn build_templates_import_globset(
     for pattern in patterns {
         let path_to_ignored_pattern = template_root.join(pattern);
         let path_str = path_to_str(&path_to_ignored_pattern).unwrap_or_else(|_| {
-            debug!("Failed to convert path to string: {:?}", path_to_ignored_pattern);
+            debug!("Failed to convert path to string: {path_to_ignored_pattern:?}");
             ""
         });
         builder.add(Glob::new(path_str).unwrap());

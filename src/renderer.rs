@@ -76,7 +76,7 @@ fn regex_filter(val: &str, re: &str) -> bool {
     match Regex::new(re) {
         Ok(re) => re.is_match(val),
         Err(err) => {
-            warn!("Invalid regex '{}': {}", re, err);
+            warn!("Invalid regex '{re}': {err}");
             false
         }
     }

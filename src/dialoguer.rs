@@ -111,7 +111,7 @@ fn prompt_for_input_method(prompt: &str, default_method: usize) -> Result<usize>
     let methods = vec!["Use text editor", "Enter inline"];
 
     let selection = Select::new()
-        .with_prompt(format!("{} - Choose input method", prompt))
+        .with_prompt(format!("{prompt} - Choose input method"))
         .default(default_method)
         .items(&methods)
         .interact()?;
@@ -121,7 +121,7 @@ fn prompt_for_input_method(prompt: &str, default_method: usize) -> Result<usize>
 
 /// Handle multiline console input for structured data
 fn get_data_from_console(is_yaml: bool, prompt: &str) -> Result<serde_json::Value> {
-    println!("{} (Enter empty line to finish):", prompt);
+    println!("{prompt} (Enter empty line to finish):");
     let mut lines = Vec::new();
     loop {
         let line: String =
