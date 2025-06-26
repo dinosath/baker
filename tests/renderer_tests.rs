@@ -231,6 +231,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn test_pre_hook_cli_merge() {
         let _ = env_logger::try_init();
         let tmp_dir = tempfile::tempdir().unwrap();

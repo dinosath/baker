@@ -192,10 +192,7 @@ pub fn run(args: Args) -> Result<()> {
     // Retrieve answers from pre-hook and command line and merge them
     let mut answers = serde_json::Map::new();
 
-    if let Some(pre_hook_stdout) = pre_hook_stdout {
-        // Read and print the raw output from pre hook
-        let result = read_from(pre_hook_stdout).unwrap_or_default();
-
+    if let Some(result) = pre_hook_stdout {
         log::debug!(
             "Pre-hook stdout content (attempting to parse as JSON answers): {}",
             result
@@ -339,8 +336,7 @@ pub fn run(args: Args) -> Result<()> {
         let post_hook_stdout =
             run_hook(&template_root, &output_root, &post_hook_file, Some(&answers))?;
 
-        if let Some(post_hook_stdout) = post_hook_stdout {
-            let result = read_from(post_hook_stdout).unwrap_or_default();
+        if let Some(result) = post_hook_stdout {
             log::debug!("Post-hook stdout content: {}", result);
         }
     }
