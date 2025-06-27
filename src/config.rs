@@ -92,7 +92,9 @@ pub struct ConfigV1 {
 impl ConfigV1 {
     pub fn validate(&self) -> Result<(), Error> {
         if self.template_suffix.is_empty() {
-            return Err(Error::ConfigValidation("template_suffix must not be empty".into()));
+            return Err(Error::ConfigValidation(
+                "template_suffix must not be empty".into(),
+            ));
         }
         if !self.template_suffix.starts_with('.') || self.template_suffix.len() < 2 {
             return Err(Error::ConfigValidation("template_suffix must start with '.' and have at least 1 character after it".into()));

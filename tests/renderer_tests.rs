@@ -252,7 +252,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "called `Result::unwrap()` on an `Err` value: ConfigValidation(\"template_suffix must start with '.' and have at least 1 character after it\")")]
+    #[should_panic(
+        expected = "called `Result::unwrap()` on an `Err` value: ConfigValidation(\"template_suffix must start with '.' and have at least 1 character after it\")"
+    )]
     fn test_wrong_template_suffix() {
         let _ = env_logger::try_init();
         let tmp_dir = tempfile::tempdir().unwrap();
@@ -269,7 +271,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "called `Result::unwrap()` on an `Err` value: ConfigValidation(\"template_suffix must not be empty\")")]
+    #[should_panic(
+        expected = "called `Result::unwrap()` on an `Err` value: ConfigValidation(\"template_suffix must not be empty\")"
+    )]
     fn test_empty_template_suffix() {
         let _ = env_logger::try_init();
         let tmp_dir = tempfile::tempdir().unwrap();

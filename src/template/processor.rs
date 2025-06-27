@@ -1,9 +1,9 @@
-use globset::GlobSet;
-use std::fs;
-use std::path::{Path, PathBuf};
 use crate::error::{Error, Result};
 use crate::ioutils::path_to_str;
 use crate::renderer::TemplateRenderer;
+use globset::GlobSet;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use super::operation::TemplateOperation;
 
@@ -75,7 +75,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         true
     }
 
-    /// Checks if the provided path is a Baker template file by checking if the file's extension 
+    /// Checks if the provided path is a Baker template file by checking if the file's extension
     /// is the same as `template_suffix` (defaults to .baker.j2)
     ///
     /// # Arguments
@@ -88,9 +88,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     fn is_template_file<T: AsRef<Path>>(&self, path: T) -> bool {
         let path = path.as_ref();
 
-        path.file_name().and_then(|n| n.to_str()).is_some_and(|file_name| 
-            file_name.ends_with(self.template_suffix)
-        )
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|file_name| file_name.ends_with(self.template_suffix))
     }
 
     /// Renders a template entry path with template variables.
@@ -126,7 +126,8 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     ///
     fn remove_template_suffix(&self, target_path: &PathBuf) -> Result<PathBuf> {
         let target_path_str = path_to_str(target_path)?;
-        let target = target_path_str.strip_suffix(self.template_suffix).unwrap_or(target_path_str);
+        let target =
+            target_path_str.strip_suffix(self.template_suffix).unwrap_or(target_path_str);
 
         Ok(PathBuf::from(target))
     }
