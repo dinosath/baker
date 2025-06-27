@@ -194,6 +194,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 println!("template_entry: {}, is template file",template_entry.as_path().display());
                 println!("rendered_entry: {}, is template file",rendered_entry.as_path().display());
                 let template_content = fs::read_to_string(&template_entry)?;
+                let template_name =
+                    template_entry.file_name().and_then(|name| name.to_str());
+                let content = self.engine.render(&template_content, self.answers, template_name)?;
                 if self.is_template_with_loop(template_entry.clone()) {
                     println!("template_entry: {}, is loop template file", template_entry.as_path().display());
                     let template = template_entry.as_path().as_os_str().to_str().unwrap();
@@ -207,7 +210,6 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                     println!("target_path: {}", target_path.display());
 
                 }
-                let content = self.engine.render(&template_content, self.answers)?;
                 Ok(TemplateOperation::Write {
                     target: self.remove_template_suffix(&target_path)?,
                     content,

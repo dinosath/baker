@@ -4,6 +4,7 @@ use crate::{
     error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,
+    import::add_templates_in_renderer,
     ioutils::{
         copy_file, create_dir_all, get_output_dir, parse_string_to_json, read_from,
         write_file,
@@ -142,7 +143,7 @@ pub fn get_args() -> Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
-    let engine: Box<dyn TemplateRenderer> = Box::new(MiniJinjaRenderer::new());
+    let mut engine: Box<dyn TemplateRenderer> = Box::new(MiniJinjaRenderer::new());
 
     let output_root = get_output_dir(args.output_dir, args.force)?;
 
@@ -156,8 +157,18 @@ pub fn run(args: Args) -> Result<()> {
 
     let Config::V1(config) = config;
 
-    let pre_hook_filename = engine.render(&config.pre_hook_filename, &json!({}))?;
-    let post_hook_filename = engine.render(&config.post_hook_filename, &json!({}))?;
+    add_templates_in_renderer(&template_root, &config, engine.as_mut());
+
+    let pre_hook_filename = engine.render(
+        &config.pre_hook_filename,
+        &json!({}),
+        Some(&config.pre_hook_filename),
+    )?;
+    let post_hook_filename = engine.render(
+        &config.post_hook_filename,
+        &json!({}),
+        Some(&config.post_hook_filename),
+    )?;
 
     let execute_hooks = confirm_hook_execution(
         &template_root,
@@ -178,34 +189,34 @@ pub fn run(args: Args) -> Result<()> {
         None
     };
 
-    // Retrieves answers and parses them directly to avoid type incompatibility
-    let mut answers = if let Some(answers_arg) = args.answers {
-        // From command line argument
-        let answers_str =
-            if answers_arg == "-" { read_from(std::io::stdin())? } else { answers_arg };
-        parse_string_to_json(answers_str)?
-    } else if let Some(pre_hook_stdout) = pre_hook_stdout {
-        // Read and print the raw output
-        let result = read_from(pre_hook_stdout).unwrap_or_default();
+    // Retrieve answers from pre-hook and command line and merge them
+    let mut answers = serde_json::Map::new();
 
+    if let Some(result) = pre_hook_stdout {
         log::debug!(
-            "Pre-hook stdout content (attempting to parse as JSON answers): {}",
-            result
+            "Pre-hook stdout content (attempting to parse as JSON answers): {result}"
         );
 
-        serde_json::from_str::<serde_json::Value>(&result).map_or_else(
+        let pre_answers = serde_json::from_str::<serde_json::Value>(&result).map_or_else(
             |e| {
-                log::warn!("Failed to parse hook output as JSON: {}", e);
+                log::warn!("Failed to parse hook output as JSON: {e}");
                 serde_json::Map::new()
             },
             |value| match value {
                 serde_json::Value::Object(map) => map,
                 _ => serde_json::Map::new(),
             },
-        )
-    } else {
-        serde_json::Map::new()
-    };
+        );
+        answers.extend(pre_answers);
+    }
+
+    if let Some(answers_arg) = args.answers {
+        // From command line argument
+        let answers_str =
+            if answers_arg == "-" { read_from(std::io::stdin())? } else { answers_arg };
+        let cli_answers = parse_string_to_json(answers_str)?;
+        answers.extend(cli_answers);
+    }
 
     for (key, question) in config.questions {
         loop {
@@ -234,7 +245,7 @@ pub fn run(args: Args) -> Result<()> {
                 Ok(answer) => answer,
                 Err(err) => match err {
                     Error::JSONParseError(_) | Error::YAMLParseError(_) => {
-                        println!("{}", err);
+                        println!("{err}");
                         continue;
                     }
                     _ => return Err(err),
@@ -247,8 +258,8 @@ pub fn run(args: Args) -> Result<()> {
             match validate_answer(&question, &answer, engine.as_ref(), &_answers) {
                 Ok(_) => break,
                 Err(err) => match err {
-                    ValidationError::JsonSchema(msg) => println!("{}", msg),
-                    ValidationError::FieldValidation(msg) => println!("{}", msg),
+                    ValidationError::JsonSchema(msg) => println!("{msg}"),
+                    ValidationError::FieldValidation(msg) => println!("{msg}"),
                 },
             }
         }
@@ -309,11 +320,11 @@ pub fn run(args: Args) -> Result<()> {
                 };
 
                 let message = file_operation.get_message(user_confirmed_overwrite);
-                log::info!("{}", message);
+                log::info!("{message}");
             }
             Err(e) => match e {
-                Error::ProcessError { .. } => log::warn!("{}", e),
-                _ => log::error!("{}", e),
+                Error::ProcessError { .. } => log::warn!("{e}"),
+                _ => log::error!("{e}"),
             },
         }
     }
@@ -324,9 +335,8 @@ pub fn run(args: Args) -> Result<()> {
         let post_hook_stdout =
             run_hook(&template_root, &output_root, &post_hook_file, Some(&answers))?;
 
-        if let Some(post_hook_stdout) = post_hook_stdout {
-            let result = read_from(post_hook_stdout).unwrap_or_default();
-            log::debug!("Post-hook stdout content: {}", result);
+        if let Some(result) = post_hook_stdout {
+            log::debug!("Post-hook stdout content: {result}");
         }
     }
 

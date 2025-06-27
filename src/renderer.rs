@@ -8,6 +8,7 @@ pub use cruet::{
     string::{pluralize::to_plural, singularize::to_singular},
     suffix::foreign_key::to_foreign_key,
 };
+use log::warn;
 use minijinja::Environment;
 use regex::Regex;
 use serde_json::json;
@@ -15,15 +16,27 @@ use std::path::Path;
 
 /// Trait for template rendering engines.
 pub trait TemplateRenderer {
+    fn add_template(
+        &mut self,
+        name: &str,
+        template: &str,
+    ) -> Result<(), minijinja::Error>;
+
     /// Renders a template string with the given context.
     ///
     /// # Arguments
     /// * `template` - Template string to render
     /// * `context` - Context variables for rendering
+    /// * `template_name` - Optional name for the template (used in error messages)
     ///
     /// # Returns
     /// * `Result<String>` - Rendered template string
-    fn render(&self, template: &str, context: &serde_json::Value) -> Result<String>;
+    fn render(
+        &self,
+        template: &str,
+        context: &serde_json::Value,
+        template_name: Option<&str>,
+    ) -> Result<String>;
 
     /// Renders a path with the given context.
     ///
@@ -60,13 +73,13 @@ pub struct MiniJinjaRenderer {
 }
 
 fn regex_filter(val: &str, re: &str) -> bool {
-    let re = Regex::new(re).unwrap();
-
-    if re.captures(val).is_none() {
-        return false;
+    match Regex::new(re) {
+        Ok(re) => re.is_match(val),
+        Err(err) => {
+            warn!("Invalid regex '{re}': {err}");
+            false
+        }
     }
-
-    true
 }
 
 impl MiniJinjaRenderer {
@@ -101,9 +114,11 @@ impl MiniJinjaRenderer {
         &self,
         template: &str,
         context: &serde_json::Value,
+        template_name: Option<&str>,
     ) -> Result<String> {
         let mut env = self.env.clone();
-        env.add_template("temp", template)?;
+        let name = template_name.unwrap_or("temp");
+        env.add_template(name, template)?;
 
         // Merge the default context with the provided context
         let merged_context = if let (Some(default_obj), Some(context_obj)) =
@@ -119,7 +134,7 @@ impl MiniJinjaRenderer {
             context.clone()
         };
 
-        let tmpl = env.get_template("temp")?;
+        let tmpl = env.get_template(name)?;
         Ok(tmpl.render(merged_context)?)
     }
 }
@@ -131,8 +146,23 @@ impl Default for MiniJinjaRenderer {
 }
 
 impl TemplateRenderer for MiniJinjaRenderer {
-    fn render(&self, template: &str, context: &serde_json::Value) -> Result<String> {
-        self.render_internal(template, context)
+    fn add_template(
+        &mut self,
+        name: &str,
+        template: &str,
+    ) -> Result<(), minijinja::Error> {
+        // Normalize the template name for cross-platform compatibility
+        let normalized_name = name.replace("\\", "/");
+        self.env.add_template_owned(normalized_name, template.to_string())
+    }
+
+    fn render(
+        &self,
+        template: &str,
+        context: &serde_json::Value,
+        template_name: Option<&str>,
+    ) -> Result<String> {
+        self.render_internal(template, context, template_name)
     }
 
     fn render_path(
@@ -141,7 +171,8 @@ impl TemplateRenderer for MiniJinjaRenderer {
         context: &serde_json::Value,
     ) -> Result<String> {
         let path_str = path_to_str(template_path)?;
-        self.render_internal(path_str, context)
+        let template_name = template_path.file_name().and_then(|name| name.to_str());
+        self.render_internal(path_str, context, template_name)
     }
 
     fn execute_expression(

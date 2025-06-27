@@ -3,8 +3,20 @@ name: Build
 on:
   push:
     branches: ["main"]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "examples/**"
+      - "*.toml"
+      - "codecov.yml"
   pull_request:
     branches: ["main"]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "examples/**"
+      - "*.toml"
+      - "codecov.yml"
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,12 +40,18 @@ jobs:
             asset_name: baker-macos-amd64
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup cargo-tarpaulin
+        uses: taiki-e/install-action@cargo-tarpaulin
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -41,8 +59,24 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
-      - name: Build Release
-        run: cargo build --verbose --release
-
       - name: Run tests
         run: cargo test --verbose
+        env:
+          RUST_LOG: trace
+
+      - name: Run tests
+        run: |
+          cargo tarpaulin --out xml --verbose
+
+      - name: Upload reports to codecov
+        uses: codecov/codecov-action@v5
+        with:
+          name: code-coverage-report
+          file: cobertura.xml
+          flags: unit-tests
+          fail_ci_if_error: true
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Build Release
+        run: cargo build --verbose --release
