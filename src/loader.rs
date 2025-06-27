@@ -1,4 +1,4 @@
-use crate::dialoguer::confirm;
+use crate::dialoguer::confirmation::confirm;
 use crate::error::{Error, Result};
 use git2;
 use log;
