@@ -19,10 +19,6 @@ pub mod adapter;
 pub mod dialoguer;
 pub mod interface;
 
-// Test examples (only in test builds)
-#[cfg(test)]
-mod test_examples;
-
 // Re-export new interfaces for easy access
 pub use interface::*;
 
