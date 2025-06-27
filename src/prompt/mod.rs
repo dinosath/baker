@@ -17,15 +17,8 @@ use crate::{
 
 // New interface-based architecture
 pub mod adapter;
-pub mod automatic_impl;
 pub mod dialoguer_impl;
 pub mod interface;
-
-// Legacy modules (deprecated but kept for compatibility)
-pub mod choice;
-pub mod confirmation;
-pub mod structured;
-pub mod text;
 
 // Test examples (only in test builds)
 #[cfg(test)]
