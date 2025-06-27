@@ -5,6 +5,9 @@ use thiserror::Error;
 /// Represents all possible errors that can occur in Baker
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Config validation failed: {0}")]
+    ConfigValidation(String),
+
     #[error("Dialoguer error: {0}")]
     DialoguerError(#[from] DialoguerError),
 

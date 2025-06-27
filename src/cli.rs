@@ -156,6 +156,7 @@ pub fn run(args: Args) -> Result<()> {
     let config = Config::load_config(&template_root)?;
 
     let Config::V1(config) = config;
+    config.validate()?;
 
     add_templates_in_renderer(&template_root, &config, engine.as_mut());
 
@@ -276,6 +277,7 @@ pub fn run(args: Args) -> Result<()> {
         &output_root,
         &answers,
         &bakerignore,
+        config.template_suffix.as_str(),
     );
 
     // Process template files
