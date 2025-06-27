@@ -1,5 +1,5 @@
 use super::Prompter;
-use crate::{dialoguer::PromptContext, error::Result};
+use crate::{error::Result, prompt::PromptContext};
 use dialoguer::{MultiSelect, Select};
 
 /// Handles single choice selection prompts

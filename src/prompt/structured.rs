@@ -1,5 +1,5 @@
 use super::Prompter;
-use crate::{config::QuestionType, dialoguer::PromptContext, error::Result};
+use crate::{config::QuestionType, error::Result, prompt::PromptContext};
 use dialoguer::{Editor, Input, Select};
 
 /// Handles structured data input (JSON/YAML) with multiple input methods

@@ -1,5 +1,5 @@
-use crate::dialoguer::confirm;
 use crate::error::{Error, Result};
+use crate::prompt::confirm;
 use git2;
 use log;
 use std::fs;

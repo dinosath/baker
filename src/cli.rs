@@ -1,6 +1,5 @@
 use crate::{
     config::{Config, QuestionRendered},
-    dialoguer::{ask_question, confirm},
     error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,
@@ -10,6 +9,7 @@ use crate::{
         write_file,
     },
     loader::TemplateSource,
+    prompt::{ask_question, confirm},
     renderer::{MiniJinjaRenderer, TemplateRenderer},
     template::{operation::TemplateOperation, processor::TemplateProcessor},
     validation::{validate_answer, ValidationError},
