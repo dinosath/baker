@@ -5,19 +5,18 @@
 //!
 //! The module is structured in layers:
 //! - `interface`: Pure abstract interfaces independent of any UI library
-//! - `dialoguer_impl`: Concrete implementation using the dialoguer library
+//! - `dialoguer`: Concrete implementation using the dialoguer library
 //! - `adapter`: Backward compatibility layer for existing code
-//! - Legacy modules (`choice`, `confirmation`, etc.): Deprecated, kept for compatibility
 
 use crate::{
     config::{Question, Type},
     error::Result,
-    prompt::dialoguer_impl::DialoguerPrompter,
+    prompt::dialoguer::DialoguerPrompter,
 };
 
 // New interface-based architecture
 pub mod adapter;
-pub mod dialoguer_impl;
+pub mod dialoguer;
 pub mod interface;
 
 // Test examples (only in test builds)
