@@ -18,6 +18,7 @@ use crate::{
 pub mod adapter;
 pub mod dialoguer;
 pub mod interface;
+pub mod parser;
 
 // Re-export new interfaces for easy access
 pub use interface::*;

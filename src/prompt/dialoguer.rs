@@ -7,7 +7,7 @@ use super::interface::{
     ConfirmationConfig, MultipleChoiceConfig, SecretConfig, SingleChoiceConfig,
     StructuredDataConfig, TextPromptConfig,
 };
-use crate::error::Result;
+use crate::{error::Result, prompt::parser::DataParser};
 use dialoguer::{Confirm, Editor, Input, MultiSelect, Password, Select};
 use serde_json::Value;
 
@@ -80,7 +80,7 @@ impl super::interface::ConfirmationPrompter for DialoguerPrompter {
 impl super::interface::StructuredDataPrompter for DialoguerPrompter {
     fn prompt_structured_data(&self, config: &StructuredDataConfig) -> Result<Value> {
         let default_content =
-            self.serialize_structured_data(&config.default_value, config.is_yaml)?;
+            DataParser::serialize_structured_data(&config.default_value, config.is_yaml)?;
 
         let options = vec!["Enter in terminal", "Open editor"];
 
@@ -133,32 +133,6 @@ impl DialoguerPrompter {
             .interact_text()?)
     }
 
-    /// Serialize structured data to string
-    fn serialize_structured_data(&self, value: &Value, is_yaml: bool) -> Result<String> {
-        if value.is_null() {
-            return Ok("{}".to_string());
-        }
-
-        if is_yaml {
-            Ok(serde_yaml::to_string(value)?)
-        } else {
-            Ok(serde_json::to_string_pretty(value)?)
-        }
-    }
-
-    /// Parse structured data content
-    fn parse_structured_content(&self, content: &str, is_yaml: bool) -> Result<Value> {
-        if content.trim().is_empty() {
-            return Ok(Value::Object(serde_json::Map::new()));
-        }
-
-        if is_yaml {
-            Ok(serde_yaml::from_str(content)?)
-        } else {
-            Ok(serde_json::from_str(content)?)
-        }
-    }
-
     /// Handle terminal input for structured data
     fn prompt_terminal_input(
         &self,
@@ -170,7 +144,7 @@ impl DialoguerPrompter {
             .default(default_content.to_string())
             .interact_text()?;
 
-        self.parse_structured_content(&content, is_yaml)
+        DataParser::parse_structured_content(&content, is_yaml)
     }
 
     /// Handle editor input for structured data
@@ -185,6 +159,6 @@ impl DialoguerPrompter {
             .edit(default_content)?
             .unwrap_or_else(|| default_content.to_string());
 
-        self.parse_structured_content(&content, is_yaml)
+        DataParser::parse_structured_content(&content, is_yaml)
     }
 }
