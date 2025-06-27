@@ -2,21 +2,37 @@
 //!
 //! This module provides a modular approach to handling different types of user prompts
 //! including text input, choices, confirmations, and structured data.
+//!
+//! The module is structured in layers:
+//! - `interface`: Pure abstract interfaces independent of any UI library
+//! - `dialoguer_impl`: Concrete implementation using the dialoguer library
+//! - `adapter`: Backward compatibility layer for existing code
+//! - Legacy modules (`choice`, `confirmation`, etc.): Deprecated, kept for compatibility
 
 use crate::{
-    config::{IntoQuestionType, Question, QuestionType, Type},
+    config::{Question, Type},
     error::Result,
+    prompt::dialoguer_impl::DialoguerPrompter,
 };
 
+// New interface-based architecture
+pub mod adapter;
+pub mod automatic_impl;
+pub mod dialoguer_impl;
+pub mod interface;
+
+// Legacy modules (deprecated but kept for compatibility)
 pub mod choice;
 pub mod confirmation;
 pub mod structured;
 pub mod text;
 
-use choice::{MultipleChoicePrompter, SingleChoicePrompter};
-use confirmation::ConfirmationPrompter;
-use structured::StructuredDataPrompter;
-use text::TextPrompter;
+// Test examples (only in test builds)
+#[cfg(test)]
+mod test_examples;
+
+// Re-export new interfaces for easy access
+pub use interface::*;
 
 /// Common interface for all prompt types
 pub trait Prompter<'a> {
@@ -40,6 +56,11 @@ impl<'a> PromptContext<'a> {
     }
 }
 
+/// Convenience function to create the default prompt provider
+pub fn get_prompt_provider() -> impl PromptProvider {
+    DialoguerPrompter::new()
+}
+
 /// Main entry point for asking questions
 pub fn ask_question(
     question: &Question,
@@ -47,16 +68,9 @@ pub fn ask_question(
     help: String,
 ) -> Result<serde_json::Value> {
     let context = PromptContext::new(question, default, &help);
-
-    match question.into_question_type() {
-        QuestionType::MultipleChoice => MultipleChoicePrompter.prompt(&context),
-        QuestionType::Boolean => ConfirmationPrompter.prompt(&context),
-        QuestionType::SingleChoice => SingleChoicePrompter.prompt(&context),
-        QuestionType::Text => TextPrompter.prompt(&context),
-        QuestionType::Json | QuestionType::Yaml => {
-            StructuredDataPrompter::new(question.into_question_type()).prompt(&context)
-        }
-    }
+    let provider = get_prompt_provider();
+    let adapter = adapter::PromptAdapter::new(provider);
+    adapter.prompt(&context)
 }
 
 /// Simple confirmation function for backward compatibility
@@ -82,7 +96,9 @@ pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
 
     let default_value = serde_json::Value::Bool(false);
     let context = PromptContext::new(&question, &default_value, &question.help);
-    let result = ConfirmationPrompter.prompt(&context)?;
+    let provider = get_prompt_provider();
+    let adapter = adapter::PromptAdapter::new(provider);
+    let result = adapter.prompt(&context)?;
 
     Ok(result.as_bool().unwrap_or(false))
 }
