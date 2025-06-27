@@ -23,6 +23,40 @@ impl StructuredDataPrompter {
             ".json"
         }
     }
+
+    /// Serialize structured data to string
+    fn serialize_structured_data(
+        &self,
+        value: &serde_json::Value,
+        is_yaml: bool,
+    ) -> Result<String> {
+        if value.is_null() {
+            return Ok("{}".to_string());
+        }
+
+        if is_yaml {
+            Ok(serde_yaml::to_string(value)?)
+        } else {
+            Ok(serde_json::to_string_pretty(value)?)
+        }
+    }
+
+    /// Parse structured data content
+    fn parse_structured_content(
+        &self,
+        content: &str,
+        is_yaml: bool,
+    ) -> Result<serde_json::Value> {
+        if content.trim().is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+
+        if is_yaml {
+            Ok(serde_yaml::from_str(content)?)
+        } else {
+            Ok(serde_json::from_str(content)?)
+        }
+    }
 }
 
 impl Prompter<'_> for StructuredDataPrompter {
@@ -83,40 +117,6 @@ impl StructuredDataPrompter {
 
         let content = lines.join("\n");
         self.parse_structured_content(&content, self.is_yaml())
-    }
-
-    /// Serialize structured data to string
-    fn serialize_structured_data(
-        &self,
-        value: &serde_json::Value,
-        is_yaml: bool,
-    ) -> Result<String> {
-        if value.is_null() {
-            return Ok("{}".to_string());
-        }
-
-        if is_yaml {
-            Ok(serde_yaml::to_string(value)?)
-        } else {
-            Ok(serde_json::to_string_pretty(value)?)
-        }
-    }
-
-    /// Parse structured data content
-    fn parse_structured_content(
-        &self,
-        content: &str,
-        is_yaml: bool,
-    ) -> Result<serde_json::Value> {
-        if content.trim().is_empty() {
-            return Ok(serde_json::Value::Null);
-        }
-
-        if is_yaml {
-            Ok(serde_yaml::from_str(content)?)
-        } else {
-            Ok(serde_json::from_str(content)?)
-        }
     }
 
     /// Edit structured data using an external editor

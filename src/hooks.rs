@@ -3,7 +3,7 @@ use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::dialoguer::confirmation::confirm;
+use crate::dialoguer::confirm;
 use crate::error::{Error, Result};
 use crate::ioutils::path_to_str;
 

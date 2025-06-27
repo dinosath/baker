@@ -1,6 +1,6 @@
 use crate::{
     config::{Config, QuestionRendered},
-    dialoguer::{ask_question, confirmation::confirm},
+    dialoguer::{ask_question, confirm},
     error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,

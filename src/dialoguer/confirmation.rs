@@ -1,5 +1,5 @@
-use super::Prompter;
-use crate::{dialoguer::PromptContext, error::Result};
+use super::{PromptContext, Prompter};
+use crate::error::Result;
 use dialoguer::Confirm;
 
 /// Handles boolean confirmation prompts
@@ -16,13 +16,4 @@ impl Prompter<'_> for ConfirmationPrompter {
 
         Ok(serde_json::Value::Bool(result))
     }
-}
-
-/// Simple confirmation function for backward compatibility
-pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
-    if skip {
-        return Ok(true);
-    }
-
-    Ok(Confirm::new().with_prompt(prompt).default(false).interact()?)
 }

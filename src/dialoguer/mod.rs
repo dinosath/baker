@@ -4,7 +4,7 @@
 //! including text input, choices, confirmations, and structured data.
 
 use crate::{
-    config::{IntoQuestionType, Question, QuestionType},
+    config::{IntoQuestionType, Question, QuestionType, Type},
     error::Result,
 };
 
@@ -57,4 +57,32 @@ pub fn ask_question(
             StructuredDataPrompter::new(question.into_question_type()).prompt(&context)
         }
     }
+}
+
+/// Simple confirmation function for backward compatibility
+pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
+    if skip {
+        return Ok(true);
+    }
+
+    let question = Question {
+        help: prompt,
+        r#type: Type::Bool,
+        default: serde_json::Value::Bool(false),
+        choices: Vec::new(),
+        multiselect: false,
+        secret: None,
+        ask_if: String::new(),
+        schema: None,
+        validation: crate::config::Validation {
+            condition: String::new(),
+            error_message: "Invalid answer".to_string(),
+        },
+    };
+
+    let default_value = serde_json::Value::Bool(false);
+    let context = PromptContext::new(&question, &default_value, &question.help);
+    let result = ConfirmationPrompter.prompt(&context)?;
+
+    Ok(result.as_bool().unwrap_or(false))
 }

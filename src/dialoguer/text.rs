@@ -46,8 +46,8 @@ impl TextPrompter {
                 secret_config.mistmatch_err.clone()
             };
 
-            password = password
-                .with_confirmation(format!("{} (confirm)", prompt), error_message);
+            password =
+                password.with_confirmation(format!("{prompt} (confirm)"), error_message);
         }
 
         Ok(password.interact()?)
