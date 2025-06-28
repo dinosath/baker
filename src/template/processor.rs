@@ -253,7 +253,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -301,7 +301,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -353,7 +353,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -404,7 +404,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -449,7 +449,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&nested_directory_path.as_path()).unwrap();
@@ -494,7 +494,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&nested_directory_path.as_path());
@@ -546,7 +546,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -594,7 +594,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -642,7 +642,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -690,7 +690,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -738,7 +738,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -801,7 +801,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -844,7 +844,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -905,7 +905,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
-            "baker.j2",
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
