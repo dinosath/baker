@@ -51,13 +51,13 @@ brew install aliev/tap/baker
 ### Install prebuilt binaries via shell script (Linux/macOS)
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/aliev/baker/releases/download/v0.6.0/baker-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/aliev/baker/releases/latest/download/baker-installer.sh | sh
 ```
 
 ### Install prebuilt binaries via PowerShell script (Windows)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/aliev/baker/releases/download/v0.6.0/baker-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/aliev/baker/releases/latest/download/baker-installer.ps1 | iex"
 ```
 
 Prebuilt binaries for all supported platforms are available on the [releases page](https://github.com/aliev/baker/releases).
@@ -149,14 +149,17 @@ Content of CONTRIBUTING.md:
   # MyAwesomeProject
   Author: John Doe
 ```
+
 Note:
 The template suffix (default: .baker.j2) is fully configurable in your baker.yaml file using the template_suffix option. You can set it to any value, as long as it starts with a . and has at least one character after the dot (e.g., .tpl, .jinja, .tmpl). This allows you to use custom extensions for your template files.
 
 Example:
+
 ```
 schemaVersion: v1
 template_suffix: ".tpl"
 ```
+
 With this configuration, files ending with .tpl will be processed as templates instead of .baker.j2.
 
 ### Templated File Names
