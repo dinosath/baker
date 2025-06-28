@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.10.0] - 2025-06-28
 
 ### 🚀 Features
 
@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 
 - Add contribution guidelines
+- Update unreleased changelog entries
 
 ## [0.9.0] - 2025-06-22
 
