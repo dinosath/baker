@@ -1,10 +1,9 @@
-use globset::GlobSet;
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use crate::error::{Error, Result};
 use crate::ioutils::path_to_str;
 use crate::renderer::TemplateRenderer;
+use globset::GlobSet;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use super::operation::TemplateOperation;
 
@@ -17,6 +16,7 @@ pub struct TemplateProcessor<'a, P: AsRef<Path>> {
     template_root: P,
     output_root: P,
     answers: &'a serde_json::Value,
+    template_suffix: &'a str,
 }
 
 impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
@@ -26,8 +26,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         output_root: P,
         answers: &'a serde_json::Value,
         bakerignore: &'a GlobSet,
+        template_suffix: &'a str,
     ) -> Self {
-        Self { engine, template_root, output_root, answers, bakerignore }
+        Self { engine, template_root, output_root, answers, bakerignore, template_suffix }
     }
 
     /// Validates whether the `rendered_entry` is properly rendered by comparing its components
@@ -74,24 +75,22 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         true
     }
 
-    /// Checks if the provided path is a Baker template file (with .baker.j2 extension)
+    /// Checks if the provided path is a Baker template file by checking if the file's extension
+    /// is the same as `template_suffix` (defaults to .baker.j2)
     ///
     /// # Arguments
     /// * `path` - A path to the file
     ///
     /// # Returns
-    /// * `true` - if the file has .baker.j2 extension
+    /// * `true` - if the file has the same extension as the `template_suffix`
     /// * `false` - if the path is not a template file
     ///
     fn is_template_file<T: AsRef<Path>>(&self, path: T) -> bool {
         let path = path.as_ref();
 
-        path.file_name().and_then(|n| n.to_str()).is_some_and(|file_name| {
-            let parts: Vec<&str> = file_name.split('.').collect();
-            parts.len() >= 2
-                && parts[parts.len() - 2] == "baker"
-                && parts.last() == Some(&"j2")
-        })
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|file_name| file_name.ends_with(self.template_suffix))
     }
 
     /// Renders a template entry path with template variables.
@@ -117,7 +116,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         Ok(PathBuf::from(rendered_entry))
     }
 
-    /// Removes the `.baker.j2` suffix from a template file path.
+    /// Removes the designated template suffix (by default it's `.baker.j2`) from a template file path.
     ///
     /// # Arguments
     /// * `target_path` - Path with possible template suffix
@@ -127,7 +126,8 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     ///
     fn remove_template_suffix(&self, target_path: &PathBuf) -> Result<PathBuf> {
         let target_path_str = path_to_str(target_path)?;
-        let target = target_path_str.strip_suffix(".baker.j2").unwrap_or(target_path_str);
+        let target =
+            target_path_str.strip_suffix(self.template_suffix).unwrap_or(target_path_str);
 
         Ok(PathBuf::from(target))
     }
@@ -253,6 +253,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -300,6 +301,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -351,6 +353,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -401,6 +404,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -445,6 +449,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&nested_directory_path.as_path()).unwrap();
@@ -489,6 +494,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&nested_directory_path.as_path());
@@ -540,6 +546,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -587,6 +594,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -634,6 +642,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -681,6 +690,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -728,6 +738,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -790,6 +801,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -832,6 +844,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -892,6 +905,7 @@ mod tests {
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());

@@ -1,0 +1,6 @@
+schemaVersion: v1
+template_suffix: .j3
+questions:
+  message:
+    type: str
+    default: world!

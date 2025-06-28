@@ -231,6 +231,65 @@ mod tests {
     }
 
     #[test]
+    fn test_different_template_suffix() {
+        let _ = env_logger::try_init();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let args = Args {
+            template: "tests/templates/different_template_suffix".to_string(),
+            output_dir: tmp_dir.path().to_path_buf(),
+            force: true,
+            verbose: true,
+            answers: None,
+            skip_confirms: vec![All],
+            non_interactive: true,
+        };
+        run(args).unwrap();
+        assert!(!dir_diff::is_different(
+            tmp_dir.path(),
+            "tests/expected/different_template_suffix"
+        )
+        .unwrap());
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "called `Result::unwrap()` on an `Err` value: ConfigValidation(\"template_suffix must start with '.' and have at least 1 character after it\")"
+    )]
+    fn test_wrong_template_suffix() {
+        let _ = env_logger::try_init();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let args = Args {
+            template: "tests/templates/wrong_template_suffix".to_string(),
+            output_dir: tmp_dir.path().to_path_buf(),
+            force: true,
+            verbose: true,
+            answers: None,
+            skip_confirms: vec![All],
+            non_interactive: true,
+        };
+        run(args).unwrap();
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "called `Result::unwrap()` on an `Err` value: ConfigValidation(\"template_suffix must not be empty\")"
+    )]
+    fn test_empty_template_suffix() {
+        let _ = env_logger::try_init();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let args = Args {
+            template: "tests/templates/empty_template_suffix".to_string(),
+            output_dir: tmp_dir.path().to_path_buf(),
+            force: true,
+            verbose: true,
+            answers: None,
+            skip_confirms: vec![All],
+            non_interactive: true,
+        };
+        run(args).unwrap();
+    }
+
+    #[test]
     #[cfg(not(target_os = "windows"))]
     fn test_pre_hook_cli_merge() {
         let _ = env_logger::try_init();

@@ -77,6 +77,8 @@ pub struct Question {
 /// Main configuration structure holding all questions
 #[derive(Debug, Deserialize)]
 pub struct ConfigV1 {
+    #[serde(default = "get_default_template_suffix")]
+    pub template_suffix: String,
     #[serde(default = "get_default_template_globs")]
     pub template_globs: Vec<String>,
     #[serde(default)]
@@ -85,6 +87,24 @@ pub struct ConfigV1 {
     pub post_hook_filename: String,
     #[serde(default = "get_default_pre_hook_filename")]
     pub pre_hook_filename: String,
+}
+
+impl ConfigV1 {
+    pub fn validate(&self) -> Result<(), Error> {
+        if self.template_suffix.is_empty() {
+            return Err(Error::ConfigValidation(
+                "template_suffix must not be empty".into(),
+            ));
+        }
+        if !self.template_suffix.starts_with('.') || self.template_suffix.len() < 2 {
+            return Err(Error::ConfigValidation("template_suffix must start with '.' and have at least 1 character after it".into()));
+        }
+        Ok(())
+    }
+}
+
+fn get_default_template_suffix() -> String {
+    ".baker.j2".to_string()
 }
 
 fn get_default_template_globs() -> Vec<String> {
