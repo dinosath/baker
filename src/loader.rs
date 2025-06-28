@@ -1,5 +1,6 @@
 use crate::dialoguer::confirm;
 use crate::error::{Error, Result};
+use crate::metadata::{FileMetadata, TemplateMetadata};
 use git2;
 use log;
 use std::fs;
@@ -35,7 +36,10 @@ impl TemplateSource {
     ///
     /// # Returns
     /// * `Result<PathBuf>` - Path to the loaded template
-    pub fn from_string(s: &str, skip_overwrite_check: bool) -> Result<PathBuf> {
+    pub fn from_string(
+        s: &str,
+        skip_overwrite_check: bool,
+    ) -> Result<Box<dyn TemplateLoader>> {
         // Check if this is a git repository URL
         let source = if Self::is_git_url(s) {
             Self::Git(s.to_string())
@@ -49,8 +53,7 @@ impl TemplateSource {
             }
             TemplateSource::FileSystem(path) => Box::new(LocalLoader::new(path)),
         };
-
-        loader.load()
+        Ok(loader)
     }
 
     /// Determines if a string represents a git repository URL.
@@ -105,6 +108,8 @@ pub trait TemplateLoader {
     /// # Returns
     /// * `Result<PathBuf>` - Path to the loaded template
     fn load(&self) -> Result<PathBuf>;
+
+    fn generate_metadata(&self) -> Result<TemplateMetadata>;
 }
 
 /// Loader for templates from the local filesystem.
@@ -140,8 +145,12 @@ impl<P: AsRef<std::path::Path>> TemplateLoader for LocalLoader<P> {
 
         Ok(path.to_path_buf())
     }
-}
 
+    fn generate_metadata(&self) -> Result<TemplateMetadata> {
+        let directory = self.path.as_ref().to_string_lossy().to_string();
+        Ok(TemplateMetadata::FileMetadata(FileMetadata { directory }))
+    }
+}
 impl<S: AsRef<str>> GitLoader<S> {
     /// Creates a new GitLoader instance.
     pub fn new(repo: S, skip_overwrite_check: bool) -> Self {
@@ -236,10 +245,22 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
         let mut builder = git2::build::RepoBuilder::new();
         builder.fetch_options(fetch_opts);
 
-        match builder.clone(repo_url, &clone_path) {
-            Ok(_) => Ok(clone_path),
-            Err(e) => Err(Error::Git2Error(e)),
-        }
+        let repo = match builder.clone(repo_url, &clone_path) {
+            Ok(repo) => repo,
+            Err(e) => return Err(Error::Git2Error(e)),
+        };
+        let head = repo.head()?;
+        let commit_id = head
+            .target()
+            .map(|oid| oid.to_string())
+            .ok_or(Error::Other(anyhow::anyhow!("HEAD does not point to a commit")))?;
+        let branch_name = head.shorthand().unwrap_or("main");
+
+        Ok(clone_path)
+    }
+
+    fn generate_metadata(&self) -> Result<TemplateMetadata> {
+        todo!()
     }
 }
 

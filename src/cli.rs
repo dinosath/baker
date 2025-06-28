@@ -1,3 +1,4 @@
+use crate::metadata::GenerationMetadata;
 use crate::{
     config::{Config, QuestionRendered},
     dialoguer::{ask_question, confirm},
@@ -147,15 +148,22 @@ pub fn run(args: Args) -> Result<()> {
 
     let output_root = get_output_dir(args.output_dir, args.force)?;
 
-    let template_root = TemplateSource::from_string(
+    let template_source = TemplateSource::from_string(
         args.template.as_str(),
         args.skip_confirms.contains(&crate::cli::SkipConfirm::All)
             || args.skip_confirms.contains(&crate::cli::SkipConfirm::Overwrite),
     )?;
+    let template_root = template_source.load()?;
 
     let config = Config::load_config(&template_root)?;
 
     let Config::V1(config) = config;
+    let template_metadata = template_source.generate_metadata()?;
+    let metadata =
+        GenerationMetadata::new(template_metadata, args.answers.clone().into());
+    metadata
+        .save_to_file(&config.metadata_file)
+        .map_err(|e| Error::Other(anyhow::anyhow!(e)))?;
 
     add_templates_in_renderer(&template_root, &config, engine.as_mut());
 
