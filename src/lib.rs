@@ -14,7 +14,7 @@ pub mod ignore;
 pub mod renderer;
 
 /// User input and interaction handling.
-pub mod dialoguer;
+pub mod prompt;
 
 /// An abstraction that allows implementing a source for Baker templates.
 pub mod loader;
