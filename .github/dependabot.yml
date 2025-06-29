@@ -15,8 +15,6 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    reviewers:
-      - "aliev"
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
@@ -33,5 +31,3 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    reviewers:
-      - "aliev"
