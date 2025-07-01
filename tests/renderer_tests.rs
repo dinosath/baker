@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use baker::cli::{run, Args, SkipConfirm::All};
+    use std::fs;
+use walkdir::WalkDir;
+use std::path::Path;
+use baker::cli::{run, Args, SkipConfirm::All};
     use baker::renderer::{MiniJinjaRenderer, TemplateRenderer};
     use serde_json::json;
     use test_log::test;
@@ -55,6 +58,36 @@ mod tests {
         );
     }
 
+    fn print_dir_diff(dir1: &Path, dir2: &Path) {
+        let mut files1 = std::collections::HashSet::new();
+        let mut files2 = std::collections::HashSet::new();
+
+        for entry in WalkDir::new(dir1).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
+            let rel = entry.path().strip_prefix(dir1).unwrap().to_path_buf();
+            files1.insert(rel);
+        }
+        for entry in WalkDir::new(dir2).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
+            let rel = entry.path().strip_prefix(dir2).unwrap().to_path_buf();
+            files2.insert(rel);
+        }
+
+        for file in files1.difference(&files2) {
+            println!("Only in {:?}: {:?}", dir1, file);
+        }
+        for file in files2.difference(&files1) {
+            println!("Only in {:?}: {:?}", dir2, file);
+        }
+        for file in files1.intersection(&files2) {
+            let path1 = dir1.join(file);
+            let path2 = dir2.join(file);
+            let content1 = fs::read(&path1).unwrap();
+            let content2 = fs::read(&path2).unwrap();
+            if content1 != content2 {
+                println!("File differs: {:?}", file);
+            }
+        }
+    }
+
     fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>) {
         let tmp_dir = tempfile::tempdir().unwrap();
         let args = Args {
@@ -67,6 +100,7 @@ mod tests {
             non_interactive: true,
         };
         run(args).unwrap();
+        print_dir_diff(tmp_dir.path(), expected_dir.as_ref());
         assert!(!dir_diff::is_different(tmp_dir.path(), expected_dir).unwrap());
     }
 
