@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use std::fs;
-use walkdir::WalkDir;
-use std::path::Path;
-use baker::cli::{run, Args, SkipConfirm::All};
+    use baker::cli::{run, Args, SkipConfirm::All};
     use baker::renderer::{MiniJinjaRenderer, TemplateRenderer};
     use serde_json::json;
+    use std::fs;
+    use std::path::Path;
     use test_log::test;
+    use walkdir::WalkDir;
 
     fn test_template(template: &str, expected: &str) {
         let renderer = MiniJinjaRenderer::new();
@@ -62,11 +62,19 @@ use baker::cli::{run, Args, SkipConfirm::All};
         let mut files1 = std::collections::HashSet::new();
         let mut files2 = std::collections::HashSet::new();
 
-        for entry in WalkDir::new(dir1).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
+        for entry in WalkDir::new(dir1)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+        {
             let rel = entry.path().strip_prefix(dir1).unwrap().to_path_buf();
             files1.insert(rel);
         }
-        for entry in WalkDir::new(dir2).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_file()) {
+        for entry in WalkDir::new(dir2)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+        {
             let rel = entry.path().strip_prefix(dir2).unwrap().to_path_buf();
             files2.insert(rel);
         }
