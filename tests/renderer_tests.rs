@@ -2,6 +2,8 @@
 mod tests {
     use baker::cli::{run, Args, SkipConfirm::All};
     use baker::renderer::{MiniJinjaRenderer, TemplateRenderer};
+    use log::debug;
+    use minijinja::functions::debug;
     use serde_json::json;
     use std::fs;
     use std::path::Path;
@@ -80,10 +82,10 @@ mod tests {
         }
 
         for file in files1.difference(&files2) {
-            println!("Only in {:?}: {:?}", dir1, file);
+            debug!("Only in {:?}: {:?}", dir1, file);
         }
         for file in files2.difference(&files1) {
-            println!("Only in {:?}: {:?}", dir2, file);
+            debug!("Only in {:?}: {:?}", dir2, file);
         }
         for file in files1.intersection(&files2) {
             let path1 = dir1.join(file);
@@ -91,7 +93,9 @@ mod tests {
             let content1 = fs::read(&path1).unwrap();
             let content2 = fs::read(&path2).unwrap();
             if content1 != content2 {
-                println!("File differs: {:?}", file);
+                debug!("File differs: {:?}", file);
+                debug!("Content in {:?}:\n{}", dir1, String::from_utf8_lossy(&content1));
+                debug!("Content in {:?}:\n{}", dir2, String::from_utf8_lossy(&content2));
             }
         }
     }
