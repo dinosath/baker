@@ -94,8 +94,8 @@ mod tests {
             let content2 = fs::read(&path2).unwrap();
             if content1 != content2 {
                 debug!("File differs: {:?}", file);
-                debug!("Content in {:?}:\n{}", dir1, String::from_utf8_lossy(&content1));
-                debug!("Content in {:?}:\n{}", dir2, String::from_utf8_lossy(&content2));
+                debug!("Content in {:?}:\n{:?}", dir1, String::from_utf8(content1));
+                debug!("Content in {:?}:\n{:?}", dir2, String::from_utf8(content2));
             }
         }
     }
