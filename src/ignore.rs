@@ -57,7 +57,7 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
 
     for pattern in &patterns {
         debug!("Adding ignore pattern: {} to globset", pattern);
-        builder.add(Glob::new(&pattern)?);
+        builder.add(Glob::new(pattern)?);
     }
     info!("Loaded the following ignore patterns from .bakerignore file: {:?}", patterns);
     Ok(builder.build()?)
