@@ -1,7 +1,6 @@
 use crate::{
     config::{ConfigV1, QuestionRendered},
     error::{Error, Result},
-    ioutils::{parse_string_to_json, read_from},
     prompt::ask_question,
     renderer::TemplateRenderer,
     validation::{validate_answer, ValidationError},
@@ -17,6 +16,13 @@ pub struct AnswerCollector<'a> {
 impl<'a> AnswerCollector<'a> {
     pub fn new(engine: &'a dyn TemplateRenderer, non_interactive: bool) -> Self {
         Self { engine, non_interactive }
+    }
+
+    /// Read content from a reader into a string.
+    fn read_from(&self, mut reader: impl std::io::Read) -> Result<String> {
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf)?;
+        Ok(buf)
     }
 
     /// Collects answers from all available sources
@@ -50,11 +56,11 @@ impl<'a> AnswerCollector<'a> {
         // Add answers from command line arguments
         if let Some(answers_arg) = cli_answers {
             let answers_str = if answers_arg == "-" {
-                read_from(std::io::stdin())?
+                self.read_from(std::io::stdin())?
             } else {
                 answers_arg
             };
-            let cli_answers = parse_string_to_json(answers_str)?;
+            let cli_answers = self.parse_string_to_json(answers_str)?;
             answers.extend(cli_answers);
         }
 
@@ -119,5 +125,18 @@ impl<'a> AnswerCollector<'a> {
         }
 
         Ok(())
+    }
+
+    /// Parse a string into a JSON object.
+    pub fn parse_string_to_json(
+        &self,
+        buf: String,
+    ) -> Result<serde_json::Map<String, serde_json::Value>> {
+        let value = serde_json::from_str(&buf)?;
+
+        match value {
+            serde_json::Value::Object(map) => Ok(map),
+            _ => Ok(serde_json::Map::new()),
+        }
     }
 }

@@ -1,16 +1,15 @@
 use crate::{
     cli::{answers::AnswerCollector, processor::FileProcessor, Args, SkipConfirm},
     config::Config,
-    error::Result,
+    error::{Error, Result},
     hooks::{confirm_hook_execution, get_hook_files, run_hook},
     ignore::parse_bakerignore_file,
     import::add_templates_in_renderer,
-    ioutils::get_output_dir,
     loader::get_template,
     template::{get_template_engine, processor::TemplateProcessor},
 };
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Main CLI runner that orchestrates the entire template generation workflow
 pub struct Runner {
@@ -26,7 +25,7 @@ impl Runner {
     pub fn run(self) -> Result<()> {
         let mut engine = get_template_engine();
 
-        let output_root = get_output_dir(&self.args.output_dir, self.args.force)?;
+        let output_root = self.get_output_dir(&self.args.output_dir, self.args.force)?;
 
         let template_root = get_template(
             self.args.template.as_str(),
@@ -41,16 +40,33 @@ impl Runner {
             self.setup_hooks(&template_root, &config, &engine)?;
 
         // Execute pre-generation hook
-        let pre_hook_output = self.execute_pre_hook(&template_root, &output_root, &pre_hook_file, execute_hooks)?;
+        let pre_hook_output = self.execute_pre_hook(
+            &template_root,
+            &output_root,
+            &pre_hook_file,
+            execute_hooks,
+        )?;
 
         // Collect answers from all sources
         let answers = self.collect_answers(&config, &engine, pre_hook_output)?;
 
         // Process template files
-        self.process_template_files(&template_root, &output_root, &config, &engine, &answers)?;
+        self.process_template_files(
+            &template_root,
+            &output_root,
+            &config,
+            &engine,
+            &answers,
+        )?;
 
         // Execute post-generation hook
-        self.execute_post_hook(&template_root, &output_root, &post_hook_file, &answers, execute_hooks)?;
+        self.execute_post_hook(
+            &template_root,
+            &output_root,
+            &post_hook_file,
+            &answers,
+            execute_hooks,
+        )?;
 
         println!(
             "Template generation completed successfully in {}.",
@@ -60,7 +76,10 @@ impl Runner {
     }
 
     /// Loads and validates the template configuration
-    fn load_and_validate_config(&self, template_root: &PathBuf) -> Result<crate::config::ConfigV1> {
+    fn load_and_validate_config(
+        &self,
+        template_root: &PathBuf,
+    ) -> Result<crate::config::ConfigV1> {
         let config = Config::load_config(template_root)?;
         let Config::V1(config) = config;
         config.validate()?;
@@ -180,6 +199,21 @@ impl Runner {
     fn should_skip_hook_prompts(&self) -> bool {
         self.args.skip_confirms.contains(&SkipConfirm::All)
             || self.args.skip_confirms.contains(&SkipConfirm::Hooks)
+    }
+
+    /// Ensures the output directory exists and is safe to write to.
+    fn get_output_dir<P: AsRef<Path>>(
+        &self,
+        output_dir: P,
+        force: bool,
+    ) -> Result<PathBuf> {
+        let output_dir = output_dir.as_ref();
+        if output_dir.exists() && !force {
+            return Err(Error::OutputDirectoryExistsError {
+                output_dir: output_dir.display().to_string(),
+            });
+        }
+        Ok(output_dir.to_path_buf())
     }
 }
 
