@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::ioutils::path_to_str;
+use crate::ext::PathExt;
 use crate::renderer::TemplateRenderer;
 use globset::GlobSet;
 use std::fs;
@@ -101,12 +101,13 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// # Returns
     /// * `Result<PathBuf>` - The rendered path or an error
     ///
-    fn render_template_entry(&self, template_entry: &PathBuf) -> Result<PathBuf> {
+    fn render_template_entry(&self, template_entry: &Path) -> Result<PathBuf> {
         let rendered_entry = self.engine.render_path(template_entry, self.answers)?;
 
-        if !self
-            .has_valid_rendered_path_parts(path_to_str(template_entry)?, &rendered_entry)
-        {
+        if !self.has_valid_rendered_path_parts(
+            template_entry.to_str_checked()?,
+            &rendered_entry,
+        ) {
             return Err(Error::ProcessError {
                 source_path: rendered_entry.to_string(),
                 e: "The rendered path is not valid".to_string(),
@@ -124,8 +125,8 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// # Returns
     /// * `Result<PathBuf>` - Path with suffix removed
     ///
-    fn remove_template_suffix(&self, target_path: &PathBuf) -> Result<PathBuf> {
-        let target_path_str = path_to_str(target_path)?;
+    fn remove_template_suffix(&self, target_path: &Path) -> Result<PathBuf> {
+        let target_path_str = target_path.to_str_checked()?;
         let target =
             target_path_str.strip_suffix(self.template_suffix).unwrap_or(target_path_str);
 

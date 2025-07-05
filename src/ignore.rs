@@ -1,4 +1,4 @@
-use crate::{error::Result, ioutils::path_to_str};
+use crate::error::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use log;
 use std::{fs::read_to_string, path::Path};
@@ -32,8 +32,8 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
     // Add default patterns first
     for pattern in DEFAULT_IGNORE_PATTERNS {
         let path_to_ignored_pattern = template_root.join(pattern);
-        let path_str = path_to_str(&path_to_ignored_pattern)?;
-        builder.add(Glob::new(path_str)?);
+        let path_str = path_to_ignored_pattern.to_string_lossy();
+        builder.add(Glob::new(&path_str)?);
     }
 
     // Then add patterns from .bakerignore if it exists
@@ -41,10 +41,10 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
         for line in contents.lines() {
             let line = line.trim();
             let path_to_ignored_pattern = template_root.join(line);
-            let path_str = path_to_str(&path_to_ignored_pattern)?;
+            let path_str = path_to_ignored_pattern.to_string_lossy();
 
             if !line.is_empty() && !line.starts_with('#') {
-                builder.add(Glob::new(path_str)?);
+                builder.add(Glob::new(&path_str)?);
             }
         }
     } else {

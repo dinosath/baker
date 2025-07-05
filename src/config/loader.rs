@@ -2,7 +2,7 @@
 
 use crate::config::question::Question;
 use crate::error::{Error, Result};
-use crate::ioutils::path_to_str;
+use crate::ext::PathExt;
 use indexmap::IndexMap;
 use serde::Deserialize;
 use std::path::Path;
@@ -48,7 +48,7 @@ pub enum Config {
 impl Config {
     pub fn load_config<P: AsRef<Path>>(template_root: P) -> Result<Self> {
         let template_root = template_root.as_ref().to_path_buf();
-        let template_dir = path_to_str(&template_root)?.to_string();
+        let template_dir = template_root.to_str_checked()?.to_string();
 
         for config_file_name in CONFIG_LIST.iter() {
             let config_file_path = template_root.join(config_file_name);

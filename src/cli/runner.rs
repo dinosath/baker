@@ -4,7 +4,6 @@ use crate::{
     error::{Error, Result},
     hooks::run_hook,
     ignore::parse_bakerignore_file,
-    ioutils::path_to_str,
     loader::get_template,
     prompt::confirm,
     renderer::TemplateRenderer,
@@ -295,11 +294,8 @@ impl Runner {
         let mut builder = GlobSetBuilder::new();
         for pattern in patterns {
             let path_to_ignored_pattern = template_root.join(pattern);
-            let path_str = path_to_str(&path_to_ignored_pattern).unwrap_or_else(|_| {
-                debug!("Failed to convert path to string: {path_to_ignored_pattern:?}");
-                ""
-            });
-            builder.add(Glob::new(path_str).unwrap());
+            let path_str = path_to_ignored_pattern.display().to_string();
+            builder.add(Glob::new(&path_str).unwrap());
         }
         Some(builder.build().unwrap())
     }

@@ -19,11 +19,11 @@ pub mod prompt;
 /// An abstraction that allows implementing a source for Baker templates.
 pub mod loader;
 
-/// A set of helpers for working with the file system.
-pub mod ioutils;
-
 /// Core template processing orchestration.
 pub mod template;
 
 /// Configuration handling for Baker templates.
 pub mod config;
+
+/// Extension traits for built-in Rust types.
+pub mod ext;

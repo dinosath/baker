@@ -4,7 +4,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::error::{Error, Result};
-use crate::ioutils::path_to_str;
 
 /// Structure representing data passed to hook scripts.
 ///
@@ -42,10 +41,10 @@ pub fn run_hook<P: AsRef<Path>>(
 ) -> Result<Option<String>> {
     let hook_path = hook_path.as_ref();
 
-    let template_dir = path_to_str(&template_dir)?;
-    let output_dir = path_to_str(&output_dir)?;
+    let template_dir = template_dir.as_ref().display().to_string();
+    let output_dir = output_dir.as_ref().display().to_string();
 
-    let output = Output { template_dir, output_dir, answers };
+    let output = Output { template_dir: &template_dir, output_dir: &output_dir, answers };
 
     // Properly handle serialization errors
     let output_data = serde_json::to_vec(&output).map_err(Error::JSONParseError)?;

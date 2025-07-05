@@ -1,5 +1,5 @@
 use super::filters::*;
-use crate::{error::Result, ioutils::path_to_str, renderer::interface::TemplateRenderer};
+use crate::{error::Result, ext::PathExt, renderer::interface::TemplateRenderer};
 use minijinja::Environment;
 use serde_json::json;
 use std::path::Path;
@@ -101,7 +101,7 @@ impl TemplateRenderer for MiniJinjaRenderer {
         template_path: &Path,
         context: &serde_json::Value,
     ) -> Result<String> {
-        let path_str = path_to_str(template_path)?;
+        let path_str = template_path.to_str_checked()?;
         let template_name = template_path.file_name().and_then(|name| name.to_str());
         self.render_internal(path_str, context, template_name)
     }
