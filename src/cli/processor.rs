@@ -27,8 +27,10 @@ impl<'a> FileProcessor<'a> {
             let template_entry = dir_entry?.path().to_path_buf();
             match self.processor.process(template_entry) {
                 Ok(file_operation) => {
-                    let user_confirmed_overwrite =
-                        self.handle_file_operation(&file_operation)?;
+                    let user_confirmed_overwrite = match &file_operation {
+                        TemplateOperation::Ignore { .. } => continue,
+                        _ => self.handle_file_operation(&file_operation)?,
+                    };
                     let message = file_operation.get_message(user_confirmed_overwrite);
                     log::info!("{message}");
                 }
