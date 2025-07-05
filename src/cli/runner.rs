@@ -2,10 +2,11 @@ use crate::{
     cli::{answers::AnswerCollector, processor::FileProcessor, Args, SkipConfirm},
     config::{Config, ConfigV1},
     error::{Error, Result},
-    hooks::{confirm_hook_execution, get_hook_files, run_hook},
+    hooks::run_hook,
     ignore::parse_bakerignore_file,
     ioutils::path_to_str,
     loader::get_template,
+    prompt::confirm,
     renderer::TemplateRenderer,
     template::{get_template_engine, processor::TemplateProcessor},
 };
@@ -111,7 +112,7 @@ impl Runner {
             Some(&config.post_hook_filename),
         )?;
 
-        let execute_hooks = confirm_hook_execution(
+        let execute_hooks = self.confirm_hook_execution(
             template_root,
             self.should_skip_hook_prompts(),
             &pre_hook_filename,
@@ -119,7 +120,7 @@ impl Runner {
         )?;
 
         let (pre_hook_file, post_hook_file) =
-            get_hook_files(template_root, &pre_hook_filename, &post_hook_filename);
+            self.get_hook_files(template_root, &pre_hook_filename, &post_hook_filename);
 
         Ok((pre_hook_file, post_hook_file, execute_hooks))
     }
@@ -155,7 +156,7 @@ impl Runner {
     fn process_template_files(
         &self,
         template_root: &PathBuf,
-        output_root: &PathBuf,
+        output_root: &Path,
         config: &crate::config::ConfigV1,
         engine: &dyn crate::renderer::TemplateRenderer,
         answers: &serde_json::Value,
@@ -165,7 +166,7 @@ impl Runner {
         let processor = TemplateProcessor::new(
             engine,
             template_root.clone(),
-            output_root.clone(),
+            output_root.to_path_buf(),
             answers,
             &bakerignore,
             config.template_suffix.as_str(),
@@ -236,7 +237,7 @@ impl Runner {
     /// * `engine` - The template renderer to which the templates will be added.
     ///
     /// Only files matching at least one of the provided patterns will be processed and added.
-    pub fn add_templates_in_renderer(
+    fn add_templates_in_renderer(
         &self,
         template_root: &Path,
         config: &ConfigV1,
@@ -283,7 +284,7 @@ impl Runner {
     /// * `Some(GlobSet)` if at least one pattern is provided and the set is built successfully.
     /// * `None` if the pattern list is empty.
     ///
-    pub fn build_templates_import_globset(
+    fn build_templates_import_globset(
         &self,
         template_root: &Path,
         patterns: &Vec<String>,
@@ -301,6 +302,65 @@ impl Runner {
             builder.add(Glob::new(path_str).unwrap());
         }
         Some(builder.build().unwrap())
+    }
+
+    fn confirm_hook_execution<P: AsRef<Path>>(
+        &self,
+        template_dir: P,
+        skip_hooks_check: bool,
+        pre_hook_filename: &str,
+        post_hook_filename: &str,
+    ) -> Result<bool> {
+        let (pre_hook_file, post_hook_file) =
+            self.get_hook_files(template_dir, pre_hook_filename, post_hook_filename);
+        if pre_hook_file.exists() || post_hook_file.exists() {
+            Ok(confirm(
+            skip_hooks_check,
+                format!(
+                    "WARNING: This template contains the following hooks that will execute commands on your system:\n{}{}{}",
+                    self.get_path_if_exists(&pre_hook_file),
+                    self.get_path_if_exists(&post_hook_file),
+                    "Do you want to run these hooks?",
+                ),
+            )?)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Gets paths to pre and post generation hook scripts.
+    ///
+    /// # Arguments
+    /// * `template_dir` - Path to the template directory
+    ///
+    /// # Returns
+    /// * `(PathBuf, PathBuf)` - Tuple containing paths to pre and post hook scripts
+    fn get_hook_files<P: AsRef<Path>>(
+        &self,
+        template_dir: P,
+        pre_hook_filename: &str,
+        post_hook_filename: &str,
+    ) -> (PathBuf, PathBuf) {
+        let template_dir = template_dir.as_ref();
+        let hooks_dir = template_dir.join("hooks");
+
+        (hooks_dir.join(pre_hook_filename), hooks_dir.join(post_hook_filename))
+    }
+
+    /// Returns the file path as a string if the file exists; otherwise, returns an empty string.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file
+    ///
+    /// # Returns
+    /// * `String` - The file path or empty string
+    fn get_path_if_exists<P: AsRef<Path>>(&self, path: P) -> String {
+        let path = path.as_ref();
+        if path.exists() {
+            format!("{}\n", path.to_string_lossy())
+        } else {
+            String::new()
+        }
     }
 }
 

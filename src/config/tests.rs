@@ -1,7 +1,7 @@
 //! Tests for the config module
 
 #[cfg(test)]
-mod tests {
+mod config_tests {
     use serde_json::json;
 
     use crate::config::question::{Question, QuestionRendered};
