@@ -27,6 +27,3 @@ pub mod template;
 
 /// Configuration handling for Baker templates.
 pub mod config;
-
-/// Importing templates from a directory into renderer.
-pub mod import;
