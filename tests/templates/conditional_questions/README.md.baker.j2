@@ -1,0 +1,5 @@
+# Project Configuration
+
+Language: {{language}}
+{% if py_framework is defined %}Framework: {{py_framework}}{% endif %}
+{% if include_docker is defined and include_docker %}Docker: Enabled{% endif %}

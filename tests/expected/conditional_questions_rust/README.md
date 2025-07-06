@@ -1,0 +1,4 @@
+# Project Configuration
+
+Language: Rust
+

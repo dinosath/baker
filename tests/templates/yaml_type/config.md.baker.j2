@@ -1,0 +1,8 @@
+# Environment Configuration
+
+{% for env_name, env_config in environments|items %}
+## {{env_name|title}}
+- URL: {{env_config.url}}
+- Debug: {{env_config.debug}}
+
+{% endfor %}
