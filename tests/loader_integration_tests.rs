@@ -62,8 +62,7 @@ fn test_ssh_url_identification() {
     for url in ssh_urls {
         assert!(
             GitLoader::<&str>::is_git_url(url),
-            "Failed to identify {} as git URL",
-            url
+            "Failed to identify {url} as git URL"
         );
     }
 }
@@ -81,8 +80,7 @@ fn test_https_url_identification() {
     for url in https_urls {
         assert!(
             GitLoader::<&str>::is_git_url(url),
-            "Failed to identify {} as git URL",
-            url
+            "Failed to identify {url} as git URL"
         );
     }
 }
@@ -101,8 +99,7 @@ fn test_local_path_identification() {
     for path in local_paths {
         assert!(
             !GitLoader::<&str>::is_git_url(path),
-            "Incorrectly identified {} as git URL",
-            path
+            "Incorrectly identified {path} as git URL"
         );
     }
 }

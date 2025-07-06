@@ -1,6 +1,5 @@
-use crate::{error::Result, ioutils::path_to_str};
+use crate::error::Result;
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use log;
 use log::{debug, info};
 use std::{fs::read_to_string, path::Path};
 
@@ -35,7 +34,7 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
         .iter()
         .map(|pattern| {
             let path_to_ignored_pattern = template_root.join(pattern);
-            path_to_str(&path_to_ignored_pattern).unwrap().to_string()
+            path_to_ignored_pattern.to_string_lossy().to_string()
         })
         .collect();
 
@@ -47,7 +46,7 @@ pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSe
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .map(|line| {
                 let path_to_ignored_pattern = template_root.join(line);
-                path_to_str(&path_to_ignored_pattern).unwrap().to_string()
+                path_to_ignored_pattern.to_string_lossy().to_string()
             })
             .collect();
         patterns.extend(ignored_patterns);

@@ -57,12 +57,9 @@ mod tests {
     #[test]
     fn test_template_source_display() {
         let fs_source = TemplateSource::FileSystem(PathBuf::from("/path/to/template"));
-        assert_eq!(format!("{}", fs_source), "local path: '/path/to/template'");
+        assert_eq!(format!("{fs_source}"), "local path: '/path/to/template'");
 
         let git_source = TemplateSource::Git("git@github.com:user/repo".to_string());
-        assert_eq!(
-            format!("{}", git_source),
-            "git repository: 'git@github.com:user/repo'"
-        );
+        assert_eq!(format!("{git_source}"), "git repository: 'git@github.com:user/repo'");
     }
 }
