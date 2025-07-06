@@ -6,6 +6,11 @@ questions:
     help: Enter project name
     default: "my awesome project"
 
+  project_slug:
+    type: str
+    help: Enter project slug (snake_case version of project name)
+    default: "{{ project_name|snake_case }}"
+
   use_database:
     type: bool
     help: Include database support?
