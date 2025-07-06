@@ -1,0 +1,12 @@
+schemaVersion: v1
+
+questions:
+  favourite_language:
+    type: str
+    help: What is your favorite programming language?
+    default: Rust
+    choices:
+      - Python
+      - Rust
+      - Go
+      - TypeScript
