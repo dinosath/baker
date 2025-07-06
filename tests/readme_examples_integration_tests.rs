@@ -156,7 +156,7 @@ fn test_templated_filenames_with_database() {
         force: true,
         verbose: true,
         answers: Some(
-            r#"{"project_name": "my awesome project", "project_slug": "my_awesome_project", "use_database": true}"#.to_string(),
+            r#"{"project_name": "my awesome project", "project_slug": "my_awesome_project", "project_class": "MyAwesomeProject", "use_database": true}"#.to_string(),
         ),
         skip_confirms: vec![All],
         non_interactive: true,
@@ -178,7 +178,7 @@ fn test_templated_filenames_without_database() {
         force: true,
         verbose: true,
         answers: Some(
-            r#"{"project_name": "my awesome project", "project_slug": "my_awesome_project", "use_database": false}"#
+            r#"{"project_name": "my awesome project", "project_slug": "my_awesome_project", "project_class": "MyAwesomeProject", "use_database": false}"#
                 .to_string(),
         ),
         skip_confirms: vec![All],

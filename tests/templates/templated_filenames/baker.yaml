@@ -11,6 +11,11 @@ questions:
     help: Enter project slug (snake_case version of project name)
     default: "{{ project_name|snake_case }}"
 
+  project_class:
+    type: str
+    help: Enter project class name (PascalCase version of project name)
+    default: "{{ project_name|pascal_case }}"
+
   use_database:
     type: bool
     help: Include database support?
