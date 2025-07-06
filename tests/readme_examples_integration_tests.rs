@@ -43,10 +43,10 @@ fn test_yaml_complex_type() {
     {
         "environments": {
             "development": {
-                "url": "http://localhost:3000",
+                "url": "http://localhost:8000",
                 "debug": true
             },
-            "staging": {
+            "production": {
                 "url": "https://staging.example.com",
                 "debug": false
             }
