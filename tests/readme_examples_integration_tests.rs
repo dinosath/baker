@@ -212,6 +212,7 @@ fn test_custom_hooks() {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
 fn test_platform_variables() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let args = Args {
