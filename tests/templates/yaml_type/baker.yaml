@@ -1,0 +1,13 @@
+schemaVersion: v1
+
+questions:
+  environments:
+    type: yaml
+    help: Configure your deployment environments
+    default:
+      development:
+        url: http://localhost:8000
+        debug: true
+      production:
+        url: https://example.com
+        debug: false

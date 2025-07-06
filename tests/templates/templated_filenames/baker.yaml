@@ -1,0 +1,12 @@
+schemaVersion: v1
+
+questions:
+  project_name:
+    type: str
+    help: Enter project name
+    default: "my awesome project"
+
+  use_database:
+    type: bool
+    help: Include database support?
+    default: true

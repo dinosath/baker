@@ -1,0 +1,17 @@
+schemaVersion: v1
+
+questions:
+  username:
+    type: str
+    help: Enter your username
+    default: "defaultuser"
+
+  project_type:
+    type: str
+    help: Select project type
+    choices:
+      - web
+      - cli
+      - library
+
+post_hook_filename: "setup"

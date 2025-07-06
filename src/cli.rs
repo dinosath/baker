@@ -240,8 +240,8 @@ pub fn run(args: Args) -> Result<()> {
                 // Use the template's default value if one was specified
                 if !question.default.is_null() {
                     answers.insert(key.clone(), default.clone());
-                    break;
                 }
+                break;
             }
 
             let answer = match ask_question(&question, &default, help) {

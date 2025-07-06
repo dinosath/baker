@@ -1,0 +1,27 @@
+schemaVersion: v1
+
+questions:
+  project_name:
+    type: str
+    help: Enter project name
+    default: "Example Project"
+
+  project_slug:
+    type: str
+    help: Enter project slug
+    default: "{{ project_name|lower|replace(' ', '_')|snake_case }}"
+
+  class_name:
+    type: str
+    help: Enter class name
+    default: "{{ project_name|pascal_case }}"
+
+  table_name:
+    type: str
+    help: Enter table name
+    default: "{{ project_name|table_case }}"
+
+  constant_name:
+    type: str
+    help: Enter constant name
+    default: "{{ project_name|screaming_snake_case }}"
