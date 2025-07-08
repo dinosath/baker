@@ -29,7 +29,13 @@ impl<'a> FileProcessor<'a> {
                 Ok(file_operation) => {
                     let user_confirmed_overwrite = match &file_operation {
                         TemplateOperation::Ignore { .. } => continue,
-                        _ => self.handle_file_operation(&file_operation)?,
+                        _ => match self.handle_file_operation(&file_operation) {
+                            Ok(confirmed) => confirmed,
+                            Err(e) => {
+                                log::error!("Failed to handle file operation: {e}");
+                                continue;
+                            }
+                        },
                     };
                     let message = file_operation.get_message(user_confirmed_overwrite);
                     log::info!("{message}");
@@ -45,6 +51,7 @@ impl<'a> FileProcessor<'a> {
 
     /// Handles a single file operation (write, copy, create directory, or ignore)
     fn handle_file_operation(&self, file_operation: &TemplateOperation) -> Result<bool> {
+        log::debug!("Handling file operation: {:?}", file_operation);
         match file_operation {
             TemplateOperation::Write { target, target_exists, content, .. } => {
                 let skip_prompt = self.should_skip_overwrite_prompt(*target_exists);

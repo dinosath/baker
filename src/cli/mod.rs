@@ -3,9 +3,20 @@ pub mod processor;
 pub mod runner;
 
 use clap::{error::ErrorKind, CommandFactory, Parser, ValueEnum};
+use log::LevelFilter;
 use std::path::PathBuf;
 
 pub use runner::run;
+
+/// Get the appropriate log level from verbose count
+pub fn get_log_level_from_verbose(verbose_count: u8) -> LevelFilter {
+    match verbose_count {
+        0 => LevelFilter::Off,   // Default level when no -v flags
+        1 => LevelFilter::Info,  // -v
+        2 => LevelFilter::Debug, // -vv
+        _ => LevelFilter::Trace, // -vvv and beyond
+    }
+}
 
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq)]
 #[value(rename_all = "lowercase")]
@@ -35,8 +46,26 @@ pub struct Args {
     pub force: bool,
 
     /// Enable verbose logging output
-    #[arg(short, long)]
-    pub verbose: bool,
+    ///
+    /// Use multiple times to increase verbosity:
+    ///
+    /// * No flag: WARN level
+    ///
+    /// * `-v`: INFO level
+    ///
+    /// * `-vv`: DEBUG level
+    ///
+    /// * `-vvv`: TRACE level (maximum verbosity)
+    ///
+    /// Examples:
+    ///
+    /// > baker template output -v     # INFO level
+    ///
+    /// > baker template output -vv    # DEBUG level
+    ///
+    /// > baker template output -vvv   # TRACE level
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
 
     /// Specifies answers to use during template processing.
     ///
