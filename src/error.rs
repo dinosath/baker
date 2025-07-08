@@ -60,6 +60,6 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 /// Default error handler that prints the error message and exits with code 1
 pub fn default_error_handler(err: Error) {
-    eprintln!("Error: {err}");
+    log::error!("{err}");
     std::process::exit(1);
 }
