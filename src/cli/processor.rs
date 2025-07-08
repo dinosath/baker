@@ -51,7 +51,7 @@ impl<'a> FileProcessor<'a> {
 
     /// Handles a single file operation (write, copy, create directory, or ignore)
     fn handle_file_operation(&self, file_operation: &TemplateOperation) -> Result<bool> {
-        log::debug!("Handling file operation: {:?}", file_operation);
+        log::debug!("Handling file operation: {file_operation:?}");
         match file_operation {
             TemplateOperation::Write { target, target_exists, content, .. } => {
                 let skip_prompt = self.should_skip_overwrite_prompt(*target_exists);

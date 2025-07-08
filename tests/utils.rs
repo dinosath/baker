@@ -33,10 +33,10 @@ pub fn print_dir_diff(dir1: &Path, dir2: &Path) {
     }
 
     for file in files1.difference(&files2) {
-        debug!("Only in {:?}: {:?}", dir1, file);
+        debug!("Only in {dir1:?}: {file:?}");
     }
     for file in files2.difference(&files1) {
-        debug!("Only in {:?}: {:?}", dir2, file);
+        debug!("Only in {dir2:?}: {file:?}");
     }
     for file in files1.intersection(&files2) {
         let path1 = dir1.join(file);
@@ -44,7 +44,7 @@ pub fn print_dir_diff(dir1: &Path, dir2: &Path) {
         let content1 = fs::read(&path1).unwrap();
         let content2 = fs::read(&path2).unwrap();
         if content1 != content2 {
-            debug!("File differs: {:?}", file);
+            debug!("File differs: {file:?}");
             debug!("Content in {:?}:\n{:?}", dir1, String::from_utf8(content1));
             debug!("Content in {:?}:\n{:?}", dir2, String::from_utf8(content2));
         }
@@ -78,7 +78,7 @@ pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>)
             }
         }
         Err(e) => {
-            debug!("Error comparing directories: {}", e);
+            debug!("Error comparing directories: {e}");
         }
     }
     assert!(!dir_diff::is_different(tmp_dir.path(), expected_dir).unwrap());
