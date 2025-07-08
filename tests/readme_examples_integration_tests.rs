@@ -134,7 +134,7 @@ fn test_non_interactive_mode_with_defaults() {
         template: "tests/templates/builtin_filters".to_string(),
         output_dir: tmp_dir.path().to_path_buf(),
         force: true,
-        verbose: Some(None),
+        verbose: 0,
         answers: None, // Test default values being used
         skip_confirms: vec![All],
         non_interactive: true,
@@ -165,7 +165,7 @@ fn test_nested_answer_context() {
         template: "examples/demo".to_string(),
         output_dir: tmp_dir.path().to_path_buf(),
         force: true,
-        verbose: Some(None),
+        verbose: 0,
         answers: Some(r#"{"project_name": "Test Project", "project_author": "Test Author", "project_slug": "test_project", "use_tests": true}"#.to_string()),
         skip_confirms: vec![All],
         non_interactive: true,

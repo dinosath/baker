@@ -64,7 +64,7 @@ pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>)
         template: template.to_string(),
         output_dir: tmp_dir.path().to_path_buf(),
         force: true,
-        verbose: true,
+        verbose: 2,
         answers: answers.map(|a| a.to_string()),
         skip_confirms: vec![All],
         non_interactive: true,
