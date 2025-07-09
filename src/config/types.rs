@@ -1,5 +1,6 @@
 //! Basic types and enums for configuration
 
+use crate::constants::validation;
 use serde::Deserialize;
 
 /// Type of question to be presented to the user
@@ -21,13 +22,13 @@ pub struct Secret {
     /// Whether the secret should have confirmation
     #[serde(default)]
     pub confirm: bool,
-    #[serde(default)]
+    #[serde(default = "get_default_mismatch_error")]
     pub mistmatch_err: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Validation {
-    #[serde(default)]
+    #[serde(default = "get_default_condition")]
     pub condition: String,
     #[serde(default = "get_default_error_message")]
     pub error_message: String,
@@ -44,11 +45,15 @@ pub enum QuestionType {
 }
 
 fn get_default_error_message() -> String {
-    "Invalid answer".to_string()
+    validation::INVALID_ANSWER.to_string()
+}
+
+fn get_default_mismatch_error() -> String {
+    validation::PASSWORDS_MISMATCH.to_string()
 }
 
 pub fn get_default_condition() -> String {
-    "true".to_string()
+    validation::DEFAULT_CONDITION.to_string()
 }
 
 pub fn get_default_validation() -> Validation {

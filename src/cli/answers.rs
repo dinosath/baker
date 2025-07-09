@@ -1,5 +1,6 @@
 use crate::{
     config::{ConfigV1, IntoQuestionType, Question, QuestionRendered, QuestionType},
+    constants::STDIN_INDICATOR,
     error::{Error, Result},
     prompt::ask_question,
     renderer::TemplateRenderer,
@@ -60,7 +61,7 @@ impl<'a> AnswerCollector<'a> {
 
         // Add answers from command line arguments
         if let Some(answers_arg) = cli_answers {
-            let answers_str = if answers_arg == "-" {
+            let answers_str = if answers_arg == STDIN_INDICATOR {
                 self.read_from(std::io::stdin())?
             } else {
                 answers_arg

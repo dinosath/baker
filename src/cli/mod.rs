@@ -1,20 +1,32 @@
 pub mod answers;
+pub mod hooks;
 pub mod processor;
 pub mod runner;
 
 use clap::{error::ErrorKind, CommandFactory, Parser, ValueEnum};
+/// Pre and post generation hook processing.
 use log::LevelFilter;
 use std::path::PathBuf;
 
+use crate::constants::{exit_codes, verbosity};
+
 pub use runner::run;
+
+// Help template for missing required arguments
+const HELP_TEMPLATE: &str = r#"{about-section}
+{usage-heading} {usage}
+
+{all-args}
+{after-help}
+"#;
 
 /// Get the appropriate log level from verbose count
 pub fn get_log_level_from_verbose(verbose_count: u8) -> LevelFilter {
     match verbose_count {
-        0 => LevelFilter::Off,   // Default level when no -v flags
-        1 => LevelFilter::Info,  // -v
-        2 => LevelFilter::Debug, // -vv
-        _ => LevelFilter::Trace, // -vvv and beyond
+        verbosity::OFF => LevelFilter::Off, // Default level when no -v flags
+        verbosity::INFO => LevelFilter::Info, // -v
+        verbosity::DEBUG => LevelFilter::Debug, // -vv
+        verbosity::TRACE.. => LevelFilter::Trace, // -vvv and beyond
     }
 }
 
@@ -140,18 +152,8 @@ pub fn get_args() -> Args {
         Ok(args) => args,
         Err(e) => {
             if e.kind() == ErrorKind::MissingRequiredArgument {
-                Args::command()
-                    .help_template(
-                        r#"{about-section}
-{usage-heading} {usage}
-
-{all-args}
-{after-help}
-"#,
-                    )
-                    .print_help()
-                    .unwrap();
-                std::process::exit(1);
+                Args::command().help_template(HELP_TEMPLATE).print_help().unwrap();
+                std::process::exit(exit_codes::FAILURE);
             } else {
                 e.exit();
             }

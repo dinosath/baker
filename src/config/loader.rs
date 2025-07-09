@@ -1,13 +1,14 @@
 //! Configuration loading and management
 
 use crate::config::question::Question;
+use crate::constants::{
+    CONFIG_FILENAMES, DEFAULT_POST_HOOK, DEFAULT_PRE_HOOK, DEFAULT_TEMPLATE_SUFFIX,
+};
 use crate::error::{Error, Result};
 use crate::ext::PathExt;
 use indexmap::IndexMap;
 use serde::Deserialize;
 use std::path::Path;
-
-pub const CONFIG_LIST: &[&str] = &["baker.json", "baker.yaml", "baker.yml"];
 
 /// Main configuration structure holding all questions
 #[derive(Debug, Deserialize)]
@@ -50,7 +51,7 @@ impl Config {
         let template_root = template_root.as_ref().to_path_buf();
         let template_dir = template_root.to_str_checked()?.to_string();
 
-        for config_file_name in CONFIG_LIST.iter() {
+        for config_file_name in CONFIG_FILENAMES.iter() {
             let config_file_path = template_root.join(config_file_name);
 
             if config_file_path.exists() {
@@ -65,12 +66,15 @@ impl Config {
             }
         }
 
-        Err(Error::ConfigNotFound { template_dir, config_files: CONFIG_LIST.join(", ") })
+        Err(Error::ConfigNotFound {
+            template_dir,
+            config_files: CONFIG_FILENAMES.join(", "),
+        })
     }
 }
 
 fn get_default_template_suffix() -> String {
-    ".baker.j2".to_string()
+    DEFAULT_TEMPLATE_SUFFIX.to_string()
 }
 
 fn get_default_template_globs() -> Vec<String> {
@@ -78,9 +82,9 @@ fn get_default_template_globs() -> Vec<String> {
 }
 
 fn get_default_post_hook_filename() -> String {
-    "post".to_string()
+    DEFAULT_POST_HOOK.to_string()
 }
 
 fn get_default_pre_hook_filename() -> String {
-    "pre".to_string()
+    DEFAULT_PRE_HOOK.to_string()
 }

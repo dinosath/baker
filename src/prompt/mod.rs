@@ -67,6 +67,7 @@ pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
         return Ok(true);
     }
 
+    let default_validation = crate::config::types::get_default_validation();
     let question = Question {
         help: prompt,
         r#type: Type::Bool,
@@ -76,10 +77,7 @@ pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
         secret: None,
         ask_if: String::new(),
         schema: None,
-        validation: crate::config::Validation {
-            condition: String::new(),
-            error_message: "Invalid answer".to_string(),
-        },
+        validation: default_validation,
     };
 
     let default_value = serde_json::Value::Bool(false);
