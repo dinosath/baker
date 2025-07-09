@@ -1,8 +1,10 @@
 use crate::{
-    cli::{answers::AnswerCollector, processor::FileProcessor, Args, SkipConfirm},
+    cli::{
+        answers::AnswerCollector, hooks::run_hook, processor::FileProcessor, Args,
+        SkipConfirm,
+    },
     config::{Config, ConfigV1},
     error::{Error, Result},
-    hooks::run_hook,
     ignore::parse_bakerignore_file,
     loader::get_template,
     prompt::confirm,
@@ -262,7 +264,9 @@ impl Runner {
                 })
                 .for_each(|(filename, content)| {
                     debug!("Adding template: {filename}");
-                    engine.add_template(&filename, &content).unwrap();
+                    if let Err(e) = engine.add_template(&filename, &content) {
+                        log::warn!("Failed to add template {filename}: {e}");
+                    }
                 });
         } else {
             debug!("template_imports_patters is empty. No patterns provided for adding templates in the template engine for import and include.");
@@ -295,9 +299,19 @@ impl Runner {
         for pattern in patterns {
             let path_to_ignored_pattern = template_root.join(pattern);
             let path_str = path_to_ignored_pattern.display().to_string();
-            builder.add(Glob::new(&path_str).unwrap());
+            if let Ok(glob) = Glob::new(&path_str) {
+                builder.add(glob);
+            } else {
+                log::warn!("Invalid glob pattern: {path_str}");
+            }
         }
-        Some(builder.build().unwrap())
+        match builder.build() {
+            Ok(globset) => Some(globset),
+            Err(e) => {
+                log::warn!("Failed to build glob set: {e}");
+                None
+            }
+        }
     }
 
     fn confirm_hook_execution<P: AsRef<Path>>(

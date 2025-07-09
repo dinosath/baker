@@ -13,6 +13,6 @@ pub mod types;
 mod tests;
 
 // Re-export commonly used types for convenience
-pub use loader::{Config, ConfigV1, CONFIG_LIST};
+pub use loader::{Config, ConfigV1};
 pub use question::{IntoQuestionType, Question, QuestionRendered};
 pub use types::{QuestionType, Secret, Type, Validation};
