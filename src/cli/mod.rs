@@ -23,7 +23,7 @@ const HELP_TEMPLATE: &str = r#"{about-section}
 /// Get the appropriate log level from verbose count
 pub fn get_log_level_from_verbose(verbose_count: u8) -> LevelFilter {
     match verbose_count {
-        verbosity::OFF => LevelFilter::Off, // Default level when no -v flags
+        verbosity::OFF => LevelFilter::Error, // Default level when no -v flags
         verbosity::INFO => LevelFilter::Info, // -v
         verbosity::DEBUG => LevelFilter::Debug, // -vv
         verbosity::TRACE.. => LevelFilter::Trace, // -vvv and beyond

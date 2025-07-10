@@ -108,7 +108,7 @@ impl<P: PromptProvider> PromptHandler<P> {
         SingleChoiceConfig {
             prompt: prompt_context.help.to_string(),
             choices: prompt_context.question.choices.clone(),
-            default_index: if default_index > 0 { Some(default_index) } else { None },
+            default_index,
         }
     }
 
@@ -165,12 +165,12 @@ impl<P: PromptProvider> PromptHandler<P> {
         &self,
         choices: &[String],
         default_value: &Value,
-    ) -> usize {
+    ) -> Option<usize> {
         match default_value {
             Value::String(default_str) => {
-                choices.iter().position(|choice| choice == default_str).unwrap_or(0)
+                choices.iter().position(|choice| choice == default_str)
             }
-            _ => 0,
+            _ => None,
         }
     }
 
@@ -521,6 +521,26 @@ mod tests {
     }
 
     #[test]
+    fn test_prompt_single_choice_default_first_index() {
+        let mock = MockProvider::new().with_single_choice_response(0);
+        let prompt_handler = PromptHandler::new(mock);
+
+        let question = create_single_choice_question();
+        let default_value = json!("red"); // red is at index 0
+        let context =
+            PromptContext::new(&question, &default_value, "Choose your favorite color");
+
+        let result = prompt_handler.create_prompt(&context).unwrap();
+        assert_eq!(result, Value::String("red".to_string()));
+
+        let calls = prompt_handler.provider.get_single_choice_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].prompt, "Choose your favorite color");
+        assert_eq!(calls[0].choices, vec!["red", "blue", "green"]);
+        assert_eq!(calls[0].default_index, Some(0)); // Should be Some(0), not None!
+    }
+
+    #[test]
     fn test_prompt_multiple_choice() {
         let mock = MockProvider::new().with_multiple_choice_response(vec![0, 1]);
         let prompt_handler = PromptHandler::new(mock);
@@ -681,14 +701,23 @@ mod tests {
 
         let choices = vec!["red".to_string(), "blue".to_string(), "green".to_string()];
 
-        assert_eq!(prompt_handler.find_default_choice_index(&choices, &json!("blue")), 1);
-        assert_eq!(prompt_handler.find_default_choice_index(&choices, &json!("red")), 0);
+        assert_eq!(
+            prompt_handler.find_default_choice_index(&choices, &json!("blue")),
+            Some(1)
+        );
+        assert_eq!(
+            prompt_handler.find_default_choice_index(&choices, &json!("red")),
+            Some(0)
+        );
         assert_eq!(
             prompt_handler.find_default_choice_index(&choices, &json!("yellow")),
-            0
+            None
         );
-        assert_eq!(prompt_handler.find_default_choice_index(&choices, &Value::Null), 0);
-        assert_eq!(prompt_handler.find_default_choice_index(&choices, &json!(42)), 0);
+        assert_eq!(
+            prompt_handler.find_default_choice_index(&choices, &Value::Null),
+            None
+        );
+        assert_eq!(prompt_handler.find_default_choice_index(&choices, &json!(42)), None);
     }
 
     #[test]
