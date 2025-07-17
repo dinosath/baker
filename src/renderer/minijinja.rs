@@ -169,4 +169,20 @@ mod tests {
         test_template("{{ '' | regex('.+') }}", "false");
         test_template("{{ 'hello' | regex('[') }}", "false");
     }
+
+    #[test]
+    fn test_render_internal_non_object_context() {
+        let renderer = MiniJinjaRenderer::new();
+        let template = "platform: {{ platform }}";
+        let expected = "platform: ";
+
+        let test_context = |context: serde_json::Value| {
+            let result = renderer.render_internal(template, &context, None).unwrap();
+            assert_eq!(result, expected);
+        };
+
+        test_context(json!("simple_string"));
+        test_context(json!(["first", "second"]));
+        test_context(json!(42));
+    }
 }
