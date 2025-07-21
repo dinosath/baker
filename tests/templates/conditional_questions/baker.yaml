@@ -1,0 +1,28 @@
+schemaVersion: v1
+
+questions:
+  language:
+    type: str
+    help: What is your programming language?
+    default: Rust
+    choices:
+      - Python
+      - Rust
+      - Go
+      - TypeScript
+
+  py_framework:
+    type: str
+    help: "What is your Python framework?"
+    choices:
+      - Django
+      - FastAPI
+      - Pyramid
+      - Tornado
+    ask_if: "language == 'Python'"
+
+  include_docker:
+    type: bool
+    help: Include Docker configuration?
+    default: false
+    ask_if: "language in ['Python', 'Go']"

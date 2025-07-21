@@ -1,3 +1,6 @@
+use crate::error::{Error, Result};
+use crate::ext::PathExt;
+use crate::renderer::TemplateRenderer;
 use globset::GlobSet;
 use regex::Regex;
 use std::fs;
@@ -6,6 +9,7 @@ use log::debug;
 use crate::error::{Error, Result};
 use crate::ioutils::path_to_str;
 use crate::renderer::TemplateRenderer;
+
 
 use super::operation::TemplateOperation;
 
@@ -18,6 +22,7 @@ pub struct TemplateProcessor<'a, P: AsRef<Path>> {
     template_root: P,
     output_root: P,
     answers: &'a serde_json::Value,
+    template_suffix: &'a str,
 }
 
 impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
@@ -27,8 +32,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         output_root: P,
         answers: &'a serde_json::Value,
         bakerignore: &'a GlobSet,
+        template_suffix: &'a str,
     ) -> Self {
-        Self { engine, template_root, output_root, answers, bakerignore }
+        Self { engine, template_root, output_root, answers, bakerignore, template_suffix }
     }
 
     /// Validates whether the `rendered_entry` is properly rendered by comparing its components
@@ -75,24 +81,22 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         true
     }
 
-    /// Checks if the provided path is a Baker template file (with .baker.j2 extension)
+    /// Checks if the provided path is a Baker template file by checking if the file's extension
+    /// is the same as `template_suffix` (defaults to .baker.j2)
     ///
     /// # Arguments
     /// * `path` - A path to the file
     ///
     /// # Returns
-    /// * `true` - if the file has .baker.j2 extension
+    /// * `true` - if the file has the same extension as the `template_suffix`
     /// * `false` - if the path is not a template file
     ///
     fn is_template_file<T: AsRef<Path>>(&self, path: T) -> bool {
         let path = path.as_ref();
 
-        path.file_name().and_then(|n| n.to_str()).is_some_and(|file_name| {
-            let parts: Vec<&str> = file_name.split('.').collect();
-            parts.len() >= 2
-                && parts[parts.len() - 2] == "baker"
-                && parts.last() == Some(&"j2")
-        })
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|file_name| file_name.ends_with(self.template_suffix))
     }
 
     /// Renders a template entry path with template variables.
@@ -103,12 +107,13 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// # Returns
     /// * `Result<PathBuf>` - The rendered path or an error
     ///
-    fn render_template_entry(&self, template_entry: &PathBuf) -> Result<PathBuf> {
+    fn render_template_entry(&self, template_entry: &Path) -> Result<PathBuf> {
         let rendered_entry = self.engine.render_path(template_entry, self.answers)?;
 
-        if !self
-            .has_valid_rendered_path_parts(path_to_str(template_entry)?, &rendered_entry)
-        {
+        if !self.has_valid_rendered_path_parts(
+            template_entry.to_str_checked()?,
+            &rendered_entry,
+        ) {
             return Err(Error::ProcessError {
                 source_path: rendered_entry.to_string(),
                 e: "The rendered path is not valid".to_string(),
@@ -118,7 +123,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         Ok(PathBuf::from(rendered_entry))
     }
 
-    /// Removes the `.baker.j2` suffix from a template file path.
+    /// Removes the designated template suffix (by default it's `.baker.j2`) from a template file path.
     ///
     /// # Arguments
     /// * `target_path` - Path with possible template suffix
@@ -126,9 +131,10 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// # Returns
     /// * `Result<PathBuf>` - Path with suffix removed
     ///
-    fn remove_template_suffix(&self, target_path: &PathBuf) -> Result<PathBuf> {
-        let target_path_str = path_to_str(target_path)?;
-        let target = target_path_str.strip_suffix(".baker.j2").unwrap_or(target_path_str);
+    fn remove_template_suffix(&self, target_path: &Path) -> Result<PathBuf> {
+        let target_path_str = target_path.to_str_checked()?;
+        let target =
+            target_path_str.strip_suffix(self.template_suffix).unwrap_or(target_path_str);
 
         Ok(PathBuf::from(target))
     }
@@ -240,8 +246,8 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::{
-        ignore::parse_bakerignore_file, renderer::MiniJinjaRenderer,
-        template::operation::TemplateOperation,
+        ignore::parse_bakerignore_file,
+        template::{get_template_engine, operation::TemplateOperation},
     };
 
     use super::*;
@@ -271,14 +277,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{greetings}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -318,14 +325,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"Hello, World").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -369,14 +377,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{greetings}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -419,14 +428,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{greetings}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -463,14 +473,15 @@ mod tests {
         let output_root = TempDir::new().unwrap();
         let output_root = output_root.path();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&nested_directory_path.as_path()).unwrap();
@@ -507,14 +518,15 @@ mod tests {
         let output_root = TempDir::new().unwrap();
         let output_root = output_root.path();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&nested_directory_path.as_path());
@@ -558,14 +570,15 @@ mod tests {
         let output_root = TempDir::new().unwrap();
         let output_root = output_root.path();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -605,14 +618,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{greetings}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -652,14 +666,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{greetings}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -699,14 +714,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -746,14 +762,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path()).unwrap();
@@ -808,14 +825,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -850,14 +868,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -910,14 +929,15 @@ mod tests {
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
 
-        let engine = Box::new(MiniJinjaRenderer::new());
+        let engine = get_template_engine();
         let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
         let processor = TemplateProcessor::new(
-            engine.as_ref(),
+            &engine,
             &template_root,
             &output_root,
             &answers,
             &ignored_patterns,
+            ".baker.j2",
         );
 
         let result = processor.process(&file_path.as_path());
@@ -926,6 +946,131 @@ mod tests {
                 assert_eq!(e, "The rendered path is not valid");
             }
             _ => panic!("Expected ProcessError"),
+        }
+    }
+
+    #[test]
+    fn test_remove_template_suffix() {
+        use std::path::Path;
+        let engine = crate::renderer::MiniJinjaRenderer::new();
+        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
+        let answers = serde_json::json!({});
+        let processor = super::TemplateProcessor::new(
+            &engine,
+            Path::new("/template_root"),
+            Path::new("/output_root"),
+            &answers,
+            &bakerignore,
+            ".baker.j2",
+        );
+
+        // Case 1: Path ends with suffix
+        let path_with_suffix = Path::new("foo/bar.baker.j2");
+        let result = processor.remove_template_suffix(path_with_suffix).unwrap();
+        assert_eq!(result, Path::new("foo/bar"));
+
+        // Case 2: Path does not end with suffix
+        let path_without_suffix = Path::new("foo/bar.txt");
+        let result = processor.remove_template_suffix(path_without_suffix).unwrap();
+        assert_eq!(result, Path::new("foo/bar.txt"));
+    }
+
+    #[test]
+    fn test_get_target_path_strip_prefix_error() {
+        use std::path::Path;
+        let engine = crate::renderer::MiniJinjaRenderer::new();
+        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
+        let answers = serde_json::json!({});
+        let processor = super::TemplateProcessor::new(
+            &engine,
+            Path::new("/template_root"),
+            Path::new("/output_root"),
+            &answers,
+            &bakerignore,
+            ".baker.j2",
+        );
+        // rendered_entry does not start with template_root, so strip_prefix will fail
+        let rendered_entry = Path::new("/not_template_root/file.txt");
+        let template_entry = Path::new("/template_root/file.txt");
+        let result = processor.get_target_path(rendered_entry, template_entry);
+        match result {
+            Err(crate::error::Error::ProcessError { source_path, e }) => {
+                assert_eq!(source_path, template_entry.display().to_string());
+                assert!(e.contains("prefix"));
+            }
+            _ => panic!("Expected ProcessError from strip_prefix failure"),
+        }
+    }
+
+    #[test]
+    fn test_process_template_file_write_operation() {
+        use crate::renderer::MiniJinjaRenderer;
+        use crate::template::operation::TemplateOperation;
+        use std::io::Write;
+        use tempfile::TempDir;
+        let answers = serde_json::json!({"name": "test"});
+        let template_root = TempDir::new().unwrap();
+        let template_root = template_root.path();
+        let output_root = TempDir::new().unwrap();
+        let output_root = output_root.path();
+        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
+        let engine = MiniJinjaRenderer::new();
+        let processor = super::TemplateProcessor::new(
+            &engine,
+            template_root,
+            output_root,
+            &answers,
+            &bakerignore,
+            ".baker.j2",
+        );
+        // Create a template file ending with .baker.j2
+        let file_path = template_root.join("test.txt.baker.j2");
+        let mut temp_file = std::fs::File::create(&file_path).unwrap();
+        temp_file.write_all(b"{{ name }}").unwrap();
+        // Process the template file
+        let result = processor.process(&file_path).unwrap();
+        match result {
+            TemplateOperation::Write { target, content, target_exists } => {
+                assert_eq!(target, output_root.join("test.txt"));
+                assert_eq!(content, "test");
+                assert!(!target_exists);
+            }
+            _ => panic!("Expected Write operation for template file"),
+        }
+    }
+
+    #[test]
+    fn test_process_true_true_write_branch() {
+        use crate::renderer::MiniJinjaRenderer;
+        use crate::template::operation::TemplateOperation;
+        use std::io::Write;
+        use tempfile::TempDir;
+        let answers = serde_json::json!({"username": "copilot"});
+        let template_root = TempDir::new().unwrap();
+        let template_root = template_root.path();
+        let output_root = TempDir::new().unwrap();
+        let output_root = output_root.path();
+        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
+        let engine = MiniJinjaRenderer::new();
+        let processor = super::TemplateProcessor::new(
+            &engine,
+            template_root,
+            output_root,
+            &answers,
+            &bakerignore,
+            ".baker.j2",
+        );
+        let file_path = template_root.join("user.txt.baker.j2");
+        let mut temp_file = std::fs::File::create(&file_path).unwrap();
+        temp_file.write_all(b"{{ username }}").unwrap();
+        let result = processor.process(&file_path).unwrap();
+        match result {
+            TemplateOperation::Write { target, content, target_exists } => {
+                assert_eq!(target, output_root.join("user.txt"));
+                assert_eq!(content, "copilot");
+                assert!(!target_exists);
+            }
+            _ => panic!("Expected Write operation for (true, true) match branch"),
         }
     }
 
@@ -938,7 +1083,7 @@ mod tests {
     //     assert!(is_template_with_loop("file_%}.txt"));
     //     assert!(is_template_with_loop("file_{%.txt"));
     // }
-    // 
+    //
     // #[test]
     // fn does_not_detect_when_absent() {
     //     assert!(!is_template_with_loop("file_{{ var }}.txt"));

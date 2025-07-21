@@ -1,0 +1,12 @@
+# {{project_name}}
+
+Platform Information:
+- OS: {{platform.os}}
+- Family: {{platform.family}}
+- Architecture: {{platform.arch}}
+
+{% if platform.family == "unix" %}
+This is a Unix-like system.
+{% elif platform.family == "windows" %}
+This is a Windows system.
+{% endif %}

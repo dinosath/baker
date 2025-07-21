@@ -2,11 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.10.0] - 2025-06-28
 
 ### 🚀 Features
 
 - Add support for loop controls in templates (#33)
+- Add changelog automated update with git-cliff (#37)
+- Add code coverage (#39)
+- Add codecov to build (#42)
+
+### 🐛 Bug Fixes
+
+- Merge pre-hook and CLI answers instead of exclusive selection
+- Prevent broken pipe error in hook execution on Linux
+- Use inline format args to resolve clippy warnings
+- Handle hook stdin write errors with proper logging
+- Coverage report workflow (#40)
+
+### 📚 Documentation
+
+- Add contribution guidelines
+- Update unreleased changelog entries
 
 ## [0.9.0] - 2025-06-22
 
@@ -110,6 +126,11 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Trying to fix an issue with libz-sys on ARM64 Windows
+- Temporarily removed aarch64-pc-windows-msvc from build
 - Bump 0.5.0
 
 ## [0.4.0] - 2025-03-28
@@ -126,14 +147,6 @@ All notable changes to this project will be documented in this file.
 - Handle error when HOME directory is invalid
 - Logging imports and add debug logs for hook execution
 - Improve JSON parsing from hook output
-
-### ⚙️ Miscellaneous Tasks
-
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Trying to fix an issue with libz-sys on ARM64 Windows
-- Temporarily removed aarch64-pc-windows-msvc from build
 
 ## [0.3.0] - 2025-03-21
 

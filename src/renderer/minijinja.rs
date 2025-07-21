@@ -1,68 +1,8 @@
-use crate::{error::Result, ioutils::path_to_str};
-pub use cruet::{
-    case::{
-        camel::to_camel_case, kebab::to_kebab_case, pascal::to_pascal_case,
-        screaming_snake::to_screaming_snake_case, snake::to_snake_case,
-        table::to_table_case, train::to_train_case,
-    },
-    string::{pluralize::to_plural, singularize::to_singular},
-    suffix::foreign_key::to_foreign_key,
-};
-use log::warn;
+use super::filters::*;
+use crate::{error::Result, ext::PathExt, renderer::interface::TemplateRenderer};
 use minijinja::Environment;
-use regex::Regex;
 use serde_json::json;
 use std::path::Path;
-
-/// Trait for template rendering engines.
-pub trait TemplateRenderer {
-    fn add_template(
-        &mut self,
-        name: &str,
-        template: &str,
-    ) -> Result<(), minijinja::Error>;
-
-    /// Renders a template string with the given context.
-    ///
-    /// # Arguments
-    /// * `template` - Template string to render
-    /// * `context` - Context variables for rendering
-    /// * `template_name` - Optional name for the template (used in error messages)
-    ///
-    /// # Returns
-    /// * `Result<String>` - Rendered template string
-    fn render(
-        &self,
-        template: &str,
-        context: &serde_json::Value,
-        template_name: Option<&str>,
-    ) -> Result<String>;
-
-    /// Renders a path with the given context.
-    ///
-    /// # Arguments
-    /// * `template_path` - Path to render
-    /// * `context` - Context variables for rendering
-    ///
-    /// # Returns
-    /// * `Result<String>` - Rendered path as string
-    fn render_path(
-        &self,
-        template_path: &Path,
-        context: &serde_json::Value,
-    ) -> Result<String>;
-
-    /// Executes a template expression and returns whether it evaluates to true.
-    ///
-    /// # Arguments
-    /// * `expr` - Expression to evaluate
-    /// * `context` - Context variables for evaluation
-    ///
-    /// # Returns
-    /// * `Result<bool>` - Whether the expression evaluates to true
-    fn execute_expression(&self, expr: &str, context: &serde_json::Value)
-        -> Result<bool>;
-}
 
 /// MiniJinja-based template rendering engine.
 pub struct MiniJinjaRenderer {
@@ -72,18 +12,8 @@ pub struct MiniJinjaRenderer {
     default_context: serde_json::Value,
 }
 
-fn regex_filter(val: &str, re: &str) -> bool {
-    match Regex::new(re) {
-        Ok(re) => re.is_match(val),
-        Err(err) => {
-            warn!("Invalid regex '{re}': {err}");
-            false
-        }
-    }
-}
-
 impl MiniJinjaRenderer {
-    /// Creates a new MiniJinjaEngine instance with default environment.
+    /// Creates a new MiniJinjaRenderer instance with default environment.
     pub fn new() -> Self {
         let mut env = Environment::new();
         let default_context = json!({
@@ -94,6 +24,7 @@ impl MiniJinjaRenderer {
             }
         });
 
+        // Add all the custom filters
         env.add_filter("camel_case", to_camel_case);
         env.add_filter("kebab_case", to_kebab_case);
         env.add_filter("pascal_case", to_pascal_case);
@@ -109,7 +40,7 @@ impl MiniJinjaRenderer {
         Self { env, default_context }
     }
 
-    /// Internal helper to render templates
+    /// Internal helper to render templates with context merging
     fn render_internal(
         &self,
         template: &str,
@@ -170,7 +101,7 @@ impl TemplateRenderer for MiniJinjaRenderer {
         template_path: &Path,
         context: &serde_json::Value,
     ) -> Result<String> {
-        let path_str = path_to_str(template_path)?;
+        let path_str = template_path.to_str_checked()?;
         let template_name = template_path.file_name().and_then(|name| name.to_str());
         self.render_internal(path_str, context, template_name)
     }
@@ -186,5 +117,72 @@ impl TemplateRenderer for MiniJinjaRenderer {
         }
         let expr = self.env.compile_expression(expr_str)?;
         Ok(expr.eval(context)?.is_true())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::renderer::{interface::TemplateRenderer, MiniJinjaRenderer};
+    use serde_json::json;
+
+    fn test_template(template: &str, expected: &str) {
+        let renderer = MiniJinjaRenderer::new();
+        let result = renderer.render(template, &json!({}), None).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_string_conversion_filters() {
+        test_template("{{ 'hello world' | camel_case }}", "helloWorld");
+        test_template("{{ 'hello world' | kebab_case }}", "hello-world");
+        test_template("{{ 'hello world' | pascal_case }}", "HelloWorld");
+        test_template("{{ 'hello world' | screaming_snake_case }}", "HELLO_WORLD");
+        test_template("{{ 'hello world' | snake_case }}", "hello_world");
+        test_template("{{ 'Hello World' | table_case }}", "hello_worlds");
+        test_template("{{ 'hello world' | train_case }}", "Hello-World");
+        test_template("{{ 'car' | plural }}", "cars");
+        test_template("{{ 'cars' | singular }}", "car");
+        test_template("{{ 'User' | foreign_key }}", "user_id");
+        test_template("{{ 'Order Item' | foreign_key }}", "order_item_id");
+        test_template("{{ 'orderItem' | foreign_key }}", "order_item_id");
+        test_template("{{ 'OrderItem' | foreign_key }}", "order_item_id");
+        test_template("{{ 'order_item' | foreign_key }}", "order_item_id");
+        test_template("{{ 'order-item' | foreign_key }}", "order_item_id");
+        test_template("{{ 'ORDER' | foreign_key }}", "order_id");
+        test_template("{{ 'OrderITEM' | foreign_key }}", "order_item_id");
+    }
+
+    #[test]
+    fn test_regex_filter() {
+        test_template("{{ 'hello world' | regex('^hello') }}", "true");
+        test_template("{{ 'hello world' | regex('^hello.*') }}", "true");
+        test_template("{{ 'goodbye world' | regex('^hello.*') }}", "false");
+
+        test_template("{{ 'Hello World' | regex('hello') }}", "false");
+        test_template("{{ 'Hello World' | regex('(?i)hello') }}", "true");
+
+        test_template(r"{{ 'a+b=c' | regex('\\+') }}", "true");
+        test_template(r"{{ 'a+b=c' | regex('\\=') }}", "true");
+        test_template("{{ 'a+b=c' | regex('d') }}", "false");
+
+        test_template("{{ '' | regex('.*') }}", "true");
+        test_template("{{ '' | regex('.+') }}", "false");
+        test_template("{{ 'hello' | regex('[') }}", "false");
+    }
+
+    #[test]
+    fn test_render_internal_non_object_context() {
+        let renderer = MiniJinjaRenderer::new();
+        let template = "platform: {{ platform }}";
+        let expected = "platform: ";
+
+        let test_context = |context: serde_json::Value| {
+            let result = renderer.render_internal(template, &context, None).unwrap();
+            assert_eq!(result, expected);
+        };
+
+        test_context(json!("simple_string"));
+        test_context(json!(["first", "second"]));
+        test_context(json!(42));
     }
 }
