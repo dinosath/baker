@@ -1,17 +1,14 @@
-use crate::error::{Error, Result};
-use crate::ext::PathExt;
-use crate::renderer::TemplateRenderer;
+use crate::{
+    error::{Error, Result},
+    ext::PathExt,
+    renderer::TemplateRenderer,
+    template::operation::{TemplateOperation, TemplateOperation::MultipleWrite, WriteOp},
+};
 use globset::GlobSet;
+use log::debug;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
-use log::debug;
-use crate::error::{Error, Result};
-use crate::ioutils::path_to_str;
-use crate::renderer::TemplateRenderer;
-
-
-use super::operation::TemplateOperation;
 
 pub struct TemplateProcessor<'a, P: AsRef<Path>> {
     /// Dependencies
@@ -22,7 +19,13 @@ pub struct TemplateProcessor<'a, P: AsRef<Path>> {
     template_root: P,
     output_root: P,
     answers: &'a serde_json::Value,
-    template_suffix: &'a str,
+    template_config: TemplateConfig<'a>,
+}
+
+pub struct TemplateConfig<'a> {
+    pub template_suffix: &'a str,
+    pub loop_separator: &'a str,
+    pub loop_content_separator: &'a str,
 }
 
 impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
@@ -32,9 +35,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         output_root: P,
         answers: &'a serde_json::Value,
         bakerignore: &'a GlobSet,
-        template_suffix: &'a str,
+        template_config: TemplateConfig<'a>,
     ) -> Self {
-        Self { engine, template_root, output_root, answers, bakerignore, template_suffix }
+        Self { engine, template_root, output_root, answers, bakerignore, template_config }
     }
 
     /// Validates whether the `rendered_entry` is properly rendered by comparing its components
@@ -94,9 +97,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     fn is_template_file<T: AsRef<Path>>(&self, path: T) -> bool {
         let path = path.as_ref();
 
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|file_name| file_name.ends_with(self.template_suffix))
+        path.file_name().and_then(|n| n.to_str()).is_some_and(|file_name| {
+            file_name.ends_with(self.template_config.template_suffix)
+        })
     }
 
     /// Renders a template entry path with template variables.
@@ -133,8 +136,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     ///
     fn remove_template_suffix(&self, target_path: &Path) -> Result<PathBuf> {
         let target_path_str = target_path.to_str_checked()?;
-        let target =
-            target_path_str.strip_suffix(self.template_suffix).unwrap_or(target_path_str);
+        let target = target_path_str
+            .strip_suffix(self.template_config.template_suffix)
+            .unwrap_or(target_path_str);
 
         Ok(PathBuf::from(target))
     }
@@ -162,14 +166,11 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         Ok(self.output_root.as_ref().join(target_path))
     }
 
-    /// Returns true if the filename contains any MiniJinja block delimiters.
+    /// Returns true if the path contains any MiniJinja for-loop block delimiters anywhere in the path (not just filename).
     pub fn is_template_with_loop(&self, template_entry: PathBuf) -> bool {
-        let re = Regex::new(r"\{\%\s*for\s+\w+\s+in\s+\w+\s*\%\}").unwrap();
-        if let Some(filename) = template_entry.file_name().and_then(|n| n.to_str()) {
-            re.is_match(filename)
-        } else {
-            false
-        }
+        let re = Regex::new(r"\{\%\s*for\s+.*in.*\%\}").unwrap();
+        let path_str = template_entry.to_string_lossy();
+        re.is_match(&path_str)
     }
 
     /// Processes a template entry and determines the appropriate operation.
@@ -191,8 +192,6 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             return Ok(TemplateOperation::Ignore { source: rendered_entry });
         }
 
-        let is_template_file = self.is_template_file(&rendered_entry);
-        debug!("template_entry: {},is_template_file: {}",template_entry.as_path().display(), is_template_file);
         // Handle different types of entries
         match (template_entry.is_file(), self.is_template_file(&rendered_entry)) {
             // Template file
@@ -200,21 +199,13 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 let template_content = fs::read_to_string(&template_entry)?;
                 let template_name =
                     template_entry.file_name().and_then(|name| name.to_str());
-                let content = if self.is_template_with_loop(template_entry.clone()) {
-                    debug!("template_entry: {}, is loop template file", template_entry.as_path().display());
-                    let template = template_entry.as_path().as_os_str().to_str().unwrap();
-                    let re = Regex::new(r"(\{\%\s*endfor\s*\%\})").unwrap();
-                    let content_to_inject = format!("####content####{}---$1", template_content);
-                    debug!("content_to_inject: {}", content_to_inject);
-                    let result = re.replace_all(template, content_to_inject);
-                    debug!("result: {}", result);
-                    let content = self.engine.render(&result, self.answers, template_name)?;
-                    debug!("content: {}", content);
-                    debug!("target_path: {}", target_path.display());
-                    content
-                } else {
-                    self.engine.render(&template_content, self.answers, template_name)?
-                };
+                if self.is_template_with_loop(template_entry.clone()) {
+                    debug!("found loop template file: {}", template_entry.display());
+                    return self
+                        .render_loop_template_file(&template_entry, template_name);
+                }
+                let content =
+                    self.engine.render(&template_content, self.answers, template_name)?;
 
                 Ok(TemplateOperation::Write {
                     target: self.remove_template_suffix(&target_path)?,
@@ -235,22 +226,116 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             }),
         }
     }
+
+    /// Renders the loop template file by injecting content into the loop and rendering the result.
+    ///
+    /// # Arguments
+    /// * `template_entry` - The template path to render
+    /// * `template_name` - The name of the template file
+    ///
+    /// # Returns
+    /// * `Result<String>` - The rendered content with injected values
+    ///
+    fn render_loop_template_file(
+        &self,
+        template_entry: &Path,
+        template_name: Option<&str>,
+    ) -> Result<TemplateOperation> {
+        let template_parent_dir =
+            template_entry.parent().map(PathBuf::from).ok_or_else(|| {
+                Error::ProcessError {
+                    source_path: template_entry.display().to_string(),
+                    e: "Failed to extract parent directory from template_entry"
+                        .to_string(),
+                }
+            })?;
+        let rendered_parent_dir =
+            self.render_template_entry(template_parent_dir.as_path())?;
+        let raw_template_content = fs::read_to_string(template_entry)?;
+        let endfor_regex = Regex::new(r"(\{\%\s*endfor\s*\%\})").unwrap();
+        let injected_content = format!(
+            "{}{}{}$1",
+            self.template_config.loop_content_separator,
+            raw_template_content,
+            self.template_config.loop_separator
+        );
+        let template_with_injected_content =
+            endfor_regex.replace_all(template_entry.to_str().unwrap(), injected_content);
+        let rendered_content = self.engine.render(
+            &template_with_injected_content,
+            self.answers,
+            template_name,
+        )?;
+        debug!("rendered content: {rendered_content}");
+        let file_content_pairs = self.split_content(&rendered_content);
+        let write_operations = file_content_pairs
+            .into_iter()
+            .map(|(rendered_filename, content)| {
+                let mut output_file_path = PathBuf::from(&rendered_filename);
+                if !output_file_path.starts_with(rendered_parent_dir.as_path()) {
+                    output_file_path = rendered_parent_dir.join(&rendered_filename);
+                }
+                let final_output_path =
+                    self.get_target_path(&output_file_path, template_entry)?;
+                let target_exists = final_output_path.exists();
+                Ok(WriteOp {
+                    target: self.remove_template_suffix(&final_output_path)?,
+                    content,
+                    target_exists,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(MultipleWrite { writes: write_operations })
+    }
+
+    fn split_content(&self, input: &str) -> Vec<(String, String)> {
+        input
+            .split(self.template_config.loop_separator)
+            .filter_map(|part| {
+                let trimmed = part.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let mut sections =
+                    trimmed.splitn(2, self.template_config.loop_content_separator);
+                let filename = sections.next()?.trim().to_string();
+                let content = sections.next()?.trim().to_string();
+                Some((filename, content))
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-
+    use super::*;
+    use crate::{renderer::MiniJinjaRenderer, template::operation::TemplateOperation};
     use fs::File;
+    use globset::GlobSetBuilder;
     use serde_json::json;
+    use std::io::Write;
     use tempfile::TempDir;
 
-    use crate::{
-        ignore::parse_bakerignore_file,
-        template::{get_template_engine, operation::TemplateOperation},
-    };
-
-    use super::*;
+    fn new_test_processor(
+        answers: serde_json::Value,
+    ) -> (TempDir, TempDir, TemplateProcessor<'static, PathBuf>) {
+        let template_root = TempDir::new().unwrap();
+        let output_root = TempDir::new().unwrap();
+        let engine = Box::new(MiniJinjaRenderer::new());
+        let bakerignore = GlobSetBuilder::new().build().unwrap();
+        let answers = Box::new(answers);
+        let processor = TemplateProcessor::new(
+            Box::leak(engine),
+            template_root.path().to_path_buf(),
+            output_root.path().to_path_buf(),
+            &*Box::leak(answers),
+            &*Box::leak(Box::new(bakerignore)),
+            ".baker.j2",
+            "",
+            "####content####",
+        );
+        (template_root, output_root, processor)
+    }
 
     /// The template structure
     /// template_root/
@@ -266,34 +351,15 @@ mod tests {
     #[test]
     fn it_works_1() {
         let answers = json!({"file_name": "hello_world", "greetings": "Hello, World"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("{{file_name}}.txt.baker.j2");
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("{{file_name}}.txt.baker.j2");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{greetings}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
-
+        temp_file.write_all(b"{{greetings}}\n").unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Write { target, content, target_exists } => {
-                assert_eq!(target, output_root.join("hello_world.txt"));
-                assert_eq!(content, "Hello, World");
+                assert_eq!(target, output_root.path().join("hello_world.txt"));
+                assert_eq!(content.trim(), "Hello, World");
                 assert!(!target_exists);
             }
             _ => panic!("Expected Write operation"),
@@ -314,34 +380,15 @@ mod tests {
     #[test]
     fn it_works_3() {
         let answers = json!({});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("hello_world.txt");
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("hello_world.txt");
         let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"Hello, World").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
-
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Copy { source, target, target_exists } => {
-                assert_eq!(target, output_root.join("hello_world.txt"));
-                assert_eq!(source, template_root.join("hello_world.txt"));
+                assert_eq!(target, output_root.path().join("hello_world.txt"));
+                assert_eq!(source, template_root.path().join("hello_world.txt"));
                 assert!(!target_exists);
             }
             _ => panic!("Expected Copy operation"),
@@ -362,38 +409,20 @@ mod tests {
     #[test]
     fn it_works_4() {
         let answers = json!({"directory_name": "hello", "greetings": "Hello, World"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let nested_directory_path = template_root.join("{{directory_name}}");
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let nested_directory_path = template_root.path().join("{{directory_name}}");
         std::fs::create_dir_all(&nested_directory_path).unwrap();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
         let file_path = nested_directory_path.join("file_name.txt.baker.j2");
-
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{greetings}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
-
+        temp_file.write_all(b"{{greetings}}\n").unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Write { content, target, target_exists } => {
-                assert_eq!(content, "Hello, World");
-                assert_eq!(target, output_root.join("hello").join("file_name.txt"));
+                assert_eq!(content.trim(), "Hello, World");
+                assert_eq!(
+                    target,
+                    output_root.path().join("hello").join("file_name.txt")
+                );
                 assert!(!target_exists);
             }
             _ => panic!("Expected Write operation"),
@@ -413,33 +442,13 @@ mod tests {
     #[test]
     fn it_works_5() {
         let answers = json!({"file_name": "world.txt"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let nested_directory_path = template_root.join("{{directory_name}}");
-
+        let (template_root, _output_root, processor) = new_test_processor(answers);
+        let nested_directory_path = template_root.path().join("{{directory_name}}");
         std::fs::create_dir_all(&nested_directory_path).unwrap();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
         let file_path = nested_directory_path.join("{{file_name}}.txt");
-
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{greetings}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path());
+        temp_file.write_all(b"{{greetings}}\n").unwrap();
+        let result = processor.process(file_path);
         match result {
             Err(Error::ProcessError { e, .. }) => {
                 assert_eq!(e, "The rendered path is not valid");
@@ -462,32 +471,14 @@ mod tests {
     #[test]
     fn it_works_6() {
         let answers = json!({"create_dir": true});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
-            template_root.join("{% if create_dir %}hello{% endif %}");
-
+            template_root.path().join("{% if create_dir %}hello{% endif %}");
         std::fs::create_dir_all(&nested_directory_path).unwrap();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&nested_directory_path.as_path()).unwrap();
+        let result = processor.process(nested_directory_path).unwrap();
         match result {
             TemplateOperation::CreateDirectory { target, target_exists } => {
-                assert_eq!(target, output_root.join("hello"));
+                assert_eq!(target, output_root.path().join("hello"));
                 assert!(!target_exists);
             }
             _ => panic!("Expected CreateDirectory operation"),
@@ -507,29 +498,11 @@ mod tests {
     #[test]
     fn it_works_7() {
         let answers = json!({"create_dir": false});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
+        let (template_root, _output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
-            template_root.join("{% if create_dir %}hello{% endif %}");
-
+            template_root.path().join("{% if create_dir %}hello{% endif %}");
         std::fs::create_dir_all(&nested_directory_path).unwrap();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&nested_directory_path.as_path());
+        let result = processor.process(nested_directory_path);
         match result {
             Err(Error::ProcessError { e, .. }) => {
                 assert_eq!(e, "The rendered path is not valid");
@@ -554,37 +527,20 @@ mod tests {
     #[test]
     fn it_works_8() {
         let answers = json!({"create_dir": true});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
-            template_root.join("{% if create_dir %}hello{% endif %}");
-
+            template_root.path().join("{% if create_dir %}hello{% endif %}");
         std::fs::create_dir_all(&nested_directory_path).unwrap();
-
         let file_path = nested_directory_path.join("file_name.txt");
-
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{greetings}}").unwrap();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
+        temp_file.write_all(b"{{greetings}}\n").unwrap();
+        let result = processor.process(file_path.clone()).unwrap();
         match result {
             TemplateOperation::Copy { source, target, target_exists } => {
-                assert_eq!(target, output_root.join("hello").join("file_name.txt"));
+                assert_eq!(
+                    target,
+                    output_root.path().join("hello").join("file_name.txt")
+                );
                 assert_eq!(source, file_path);
                 assert!(!target_exists);
             }
@@ -607,34 +563,15 @@ mod tests {
     fn it_works_9() {
         let answers =
             json!({"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("{{file_name}}");
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("{{file_name}}");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{greetings}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
-
+        temp_file.write_all(b"{{greetings}}\n").unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Write { target, content, target_exists } => {
-                assert_eq!(target, output_root.join("hello_world.txt"));
-                assert_eq!(content, "Hello, World");
+                assert_eq!(target, output_root.path().join("hello_world.txt"));
+                assert_eq!(content.trim(), "Hello, World");
                 assert!(!target_exists);
             }
             _ => panic!("Expected Write operation"),
@@ -655,34 +592,15 @@ mod tests {
     #[test]
     fn it_works_10() {
         let answers = json!({"greetings": "Hello, World"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("hello_world.j2");
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("hello_world.j2");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{greetings}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
-
+        temp_file.write_all(b"{{greetings}}\n").unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Copy { target, source, target_exists } => {
-                assert_eq!(source, template_root.join("hello_world.j2"));
-                assert_eq!(target, output_root.join("hello_world.j2"));
+                assert_eq!(source, template_root.path().join("hello_world.j2"));
+                assert_eq!(target, output_root.path().join("hello_world.j2"));
                 assert!(!target_exists);
             }
             _ => panic!("Expected Copy operation"),
@@ -703,39 +621,21 @@ mod tests {
     #[test]
     fn it_works_11() {
         let answers = json!({"first_name": "Ali", "last_name": "Aliyev"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("README.baker.j2");
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("README.baker.j2");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
-
+        temp_file.write_all(b"{{first_name}} {{last_name}}\n").unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Write { target, target_exists, content } => {
-                assert_eq!(target, output_root.join("README"));
-                assert_eq!(content, "Ali Aliyev");
+                assert_eq!(target, output_root.path().join("README"));
+                assert_eq!(content.trim(), "Ali Aliyev");
                 assert!(!target_exists);
             }
             _ => panic!("Expected Copy operation"),
         }
     }
+
     /// The template structure
     /// template_root/
     ///   {{file_name}}.baker.j2
@@ -751,34 +651,15 @@ mod tests {
     fn it_works_12() {
         let answers =
             json!({"first_name": "Ali", "last_name": "Aliyev", "file_name": "README"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("{{file_name}}.baker.j2");
-
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("{{file_name}}.baker.j2");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path()).unwrap();
-
+        temp_file.write_all(b"{{first_name}} {{last_name}}\n").unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Write { target, target_exists, content } => {
-                assert_eq!(target, output_root.join("README"));
-                assert_eq!(content, "Ali Aliyev");
+                assert_eq!(target, output_root.path().join("README"));
+                assert_eq!(content.trim(), "Ali Aliyev");
                 assert!(!target_exists);
             }
             _ => panic!("Expected Copy operation"),
@@ -814,29 +695,11 @@ mod tests {
     "#]
     fn it_works_14() {
         let answers = json!({});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("{{file_name}}.baker.j2");
-
+        let (template_root, _output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("{{file_name}}.baker.j2");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path());
+        temp_file.write_all(b"{{first_name}} {{last_name}}\n").unwrap();
+        let result = processor.process(file_path);
         match result {
             Err(Error::ProcessError { e, .. }) => {
                 assert_eq!(e, "The rendered path is not valid");
@@ -857,30 +720,11 @@ mod tests {
     #[test]
     fn it_works_15() {
         let answers = json!({});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("{{file_name}}");
-
+        let (template_root, _output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("{{file_name}}");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path());
-
+        temp_file.write_all(b"{{first_name}} {{last_name}}\n").unwrap();
+        let result = processor.process(file_path);
         match result {
             Err(Error::ProcessError { e, .. }) => {
                 assert_eq!(e, "The rendered path is not valid");
@@ -918,29 +762,11 @@ mod tests {
     "#]
     fn it_works_16() {
         let answers = json!({});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-
-        let file_path = template_root.join("{{file_name}}.txt");
-
+        let (template_root, _output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("{{file_name}}.txt");
         let mut temp_file = File::create(&file_path).unwrap();
-        temp_file.write_all(b"{{first_name}} {{last_name}}").unwrap();
-
-        let engine = get_template_engine();
-        let ignored_patterns = parse_bakerignore_file(template_root).unwrap();
-        let processor = TemplateProcessor::new(
-            &engine,
-            &template_root,
-            &output_root,
-            &answers,
-            &ignored_patterns,
-            ".baker.j2",
-        );
-
-        let result = processor.process(&file_path.as_path());
+        temp_file.write_all(b"{{first_name}} {{last_name}}\n").unwrap();
+        let result = processor.process(file_path);
         match result {
             Err(Error::ProcessError { e, .. }) => {
                 assert_eq!(e, "The rendered path is not valid");
@@ -952,23 +778,11 @@ mod tests {
     #[test]
     fn test_remove_template_suffix() {
         use std::path::Path;
-        let engine = crate::renderer::MiniJinjaRenderer::new();
-        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
-        let answers = serde_json::json!({});
-        let processor = super::TemplateProcessor::new(
-            &engine,
-            Path::new("/template_root"),
-            Path::new("/output_root"),
-            &answers,
-            &bakerignore,
-            ".baker.j2",
-        );
-
+        let (_template_root, _output_root, processor) = new_test_processor(json!({}));
         // Case 1: Path ends with suffix
         let path_with_suffix = Path::new("foo/bar.baker.j2");
         let result = processor.remove_template_suffix(path_with_suffix).unwrap();
         assert_eq!(result, Path::new("foo/bar"));
-
         // Case 2: Path does not end with suffix
         let path_without_suffix = Path::new("foo/bar.txt");
         let result = processor.remove_template_suffix(path_without_suffix).unwrap();
@@ -978,23 +792,13 @@ mod tests {
     #[test]
     fn test_get_target_path_strip_prefix_error() {
         use std::path::Path;
-        let engine = crate::renderer::MiniJinjaRenderer::new();
-        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
-        let answers = serde_json::json!({});
-        let processor = super::TemplateProcessor::new(
-            &engine,
-            Path::new("/template_root"),
-            Path::new("/output_root"),
-            &answers,
-            &bakerignore,
-            ".baker.j2",
-        );
+        let (_template_root, _output_root, processor) = new_test_processor(json!({}));
         // rendered_entry does not start with template_root, so strip_prefix will fail
         let rendered_entry = Path::new("/not_template_root/file.txt");
         let template_entry = Path::new("/template_root/file.txt");
         let result = processor.get_target_path(rendered_entry, template_entry);
         match result {
-            Err(crate::error::Error::ProcessError { source_path, e }) => {
+            Err(Error::ProcessError { source_path, e }) => {
                 assert_eq!(source_path, template_entry.display().to_string());
                 assert!(e.contains("prefix"));
             }
@@ -1004,34 +808,19 @@ mod tests {
 
     #[test]
     fn test_process_template_file_write_operation() {
-        use crate::renderer::MiniJinjaRenderer;
         use crate::template::operation::TemplateOperation;
         use std::io::Write;
-        use tempfile::TempDir;
-        let answers = serde_json::json!({"name": "test"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
-        let engine = MiniJinjaRenderer::new();
-        let processor = super::TemplateProcessor::new(
-            &engine,
-            template_root,
-            output_root,
-            &answers,
-            &bakerignore,
-            ".baker.j2",
-        );
+        let answers = json!({"name": "test"});
+        let (template_root, output_root, processor) = new_test_processor(answers);
         // Create a template file ending with .baker.j2
-        let file_path = template_root.join("test.txt.baker.j2");
+        let file_path = template_root.path().join("test.txt.baker.j2");
         let mut temp_file = std::fs::File::create(&file_path).unwrap();
         temp_file.write_all(b"{{ name }}").unwrap();
         // Process the template file
-        let result = processor.process(&file_path).unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Write { target, content, target_exists } => {
-                assert_eq!(target, output_root.join("test.txt"));
+                assert_eq!(target, output_root.path().join("test.txt"));
                 assert_eq!(content, "test");
                 assert!(!target_exists);
             }
@@ -1041,32 +830,17 @@ mod tests {
 
     #[test]
     fn test_process_true_true_write_branch() {
-        use crate::renderer::MiniJinjaRenderer;
         use crate::template::operation::TemplateOperation;
         use std::io::Write;
-        use tempfile::TempDir;
-        let answers = serde_json::json!({"username": "copilot"});
-        let template_root = TempDir::new().unwrap();
-        let template_root = template_root.path();
-        let output_root = TempDir::new().unwrap();
-        let output_root = output_root.path();
-        let bakerignore = globset::GlobSetBuilder::new().build().unwrap();
-        let engine = MiniJinjaRenderer::new();
-        let processor = super::TemplateProcessor::new(
-            &engine,
-            template_root,
-            output_root,
-            &answers,
-            &bakerignore,
-            ".baker.j2",
-        );
-        let file_path = template_root.join("user.txt.baker.j2");
-        let mut temp_file = std::fs::File::create(&file_path).unwrap();
+        let answers = json!({"username": "copilot"});
+        let (template_root, output_root, processor) = new_test_processor(answers);
+        let file_path = template_root.path().join("user.txt.baker.j2");
+        let mut temp_file = File::create(&file_path).unwrap();
         temp_file.write_all(b"{{ username }}").unwrap();
-        let result = processor.process(&file_path).unwrap();
+        let result = processor.process(file_path).unwrap();
         match result {
             TemplateOperation::Write { target, content, target_exists } => {
-                assert_eq!(target, output_root.join("user.txt"));
+                assert_eq!(target, output_root.path().join("user.txt"));
                 assert_eq!(content, "copilot");
                 assert!(!target_exists);
             }
@@ -1074,20 +848,39 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn detects_jinja_blocks() {
-    //     assert!(is_template_with_loop("file_{% for x in y %}.txt"));
-    //     assert!(is_template_with_loop("file_{%- for x in y %}.txt"));
-    //     assert!(is_template_with_loop("file_{% for x in y -%}.txt"));
-    //     assert!(is_template_with_loop("file_{%- for x in y -%}.txt"));
-    //     assert!(is_template_with_loop("file_%}.txt"));
-    //     assert!(is_template_with_loop("file_{%.txt"));
-    // }
-    //
-    // #[test]
-    // fn does_not_detect_when_absent() {
-    //     assert!(!is_template_with_loop("file_{{ var }}.txt"));
-    //     assert!(!is_template_with_loop("file_name.txt"));
-    //     assert!(!is_template_with_loop(""));
-    // }
+    #[test]
+    fn test_is_template_with_loop_basic() {
+        let processor = TemplateProcessor::new(
+            Box::leak(Box::new(MiniJinjaRenderer::new())),
+            "./",
+            "./",
+            &*Box::leak(Box::new(json!({}))),
+            &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
+            ".baker.j2",
+            "---",
+            "####content####",
+        );
+        let path = PathBuf::from(
+            "{% for item in items %}{{ item.name }}.txt.baker.j2{% endfor %}",
+        );
+        assert!(processor.is_template_with_loop(path));
+        let path = PathBuf::from("foo.txt.baker.j2");
+        assert!(!processor.is_template_with_loop(path));
+    }
+
+    #[test]
+    fn test_is_template_with_loop_complex() {
+        let processor = TemplateProcessor::new(
+            Box::leak(Box::new(MiniJinjaRenderer::new())),
+            "./",
+            "./",
+            &*Box::leak(Box::new(json!({}))),
+            &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
+            ".baker.j2",
+            "---",
+            "####content####",
+        );
+        let path = PathBuf::from("{% if msg==hello %}{%for item in items in selectattr(\"name\")%}{{item.name}}.rs.baker.j2{% endfor %}{% endif %}");
+        assert!(processor.is_template_with_loop(path));
+    }
 }
