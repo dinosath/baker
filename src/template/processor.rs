@@ -330,9 +330,11 @@ mod tests {
             output_root.path().to_path_buf(),
             &*Box::leak(answers),
             &*Box::leak(Box::new(bakerignore)),
-            ".baker.j2",
-            "",
-            "####content####",
+            TemplateConfig {
+                template_suffix: ".baker.j2",
+                loop_separator: "",
+                loop_content_separator: "",
+            },
         );
         (template_root, output_root, processor)
     }
@@ -856,9 +858,11 @@ mod tests {
             "./",
             &*Box::leak(Box::new(json!({}))),
             &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
-            ".baker.j2",
-            "---",
-            "####content####",
+            TemplateConfig {
+                template_suffix: ".baker.j2",
+                loop_separator: "",
+                loop_content_separator: "",
+            },
         );
         let path = PathBuf::from(
             "{% for item in items %}{{ item.name }}.txt.baker.j2{% endfor %}",
@@ -876,9 +880,11 @@ mod tests {
             "./",
             &*Box::leak(Box::new(json!({}))),
             &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
-            ".baker.j2",
-            "---",
-            "####content####",
+            TemplateConfig {
+                template_suffix: ".baker.j2",
+                loop_separator: "",
+                loop_content_separator: "",
+            },
         );
         let path = PathBuf::from("{% if msg==hello %}{%for item in items in selectattr(\"name\")%}{{item.name}}.rs.baker.j2{% endfor %}{% endif %}");
         assert!(processor.is_template_with_loop(path));
