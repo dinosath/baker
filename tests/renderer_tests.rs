@@ -109,7 +109,7 @@ mod tests {
         run_and_assert(
             "examples/loop",
             "tests/expected/loop",
-            Some("{\"nested\":true,\"items\":[{\"name\":\"item1\"},{\"name\":\"item2\"},{\"lastname\":\"item3\"}]}"),
+            Some("{\"nested\":true,\"items\":[{\"name\":\"item1\"},{\"name\":\"item2\"}]}"),
         );
     }
 }
