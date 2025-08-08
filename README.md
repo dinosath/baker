@@ -266,8 +266,8 @@ will generate a file for each item in the `items` array, with the filename rende
 
 When rendering loop templates, Baker uses two configuration options to split and organize the generated content:
 
-- `loop_separator`: A string used to separate each file's content in the rendered output. This allows Baker to distinguish between multiple files generated from a single loop template. Default value is '<--SPLIT-->'.
-- `loop_content_separator`: A string used to separate the filename from the file content within each split section. This enables Baker to extract the correct filename and its corresponding content. Default value is '<<CONTENT>>'.
+- `loop_separator`: A string used to separate each file's content in the rendered output. This allows Baker to distinguish between multiple files generated from a single loop template. Default value is `<--SPLIT-->`.
+- `loop_content_separator`: A string used to separate the filename from the file content within each split section. This enables Baker to extract the correct filename and its corresponding content. Default value is `<<CONTENT>>`.
 
 **Example Usage:**
 
