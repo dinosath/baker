@@ -5,7 +5,7 @@ use crate::{
     template::operation::{TemplateOperation, TemplateOperation::MultipleWrite, WriteOp},
 };
 use globset::GlobSet;
-use log::debug;
+use log::{debug, error};
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -168,9 +168,15 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
 
     /// Returns true if the path contains any MiniJinja for-loop block delimiters anywhere in the path (not just filename).
     pub fn is_template_with_loop(&self, template_entry: PathBuf) -> bool {
-        let re = Regex::new(r"\{\%\s*for\s+.*in.*\%\}").unwrap();
+        let re = Regex::new(r"\{\%\s*for\s+.*in.*\%\}");
         let path_str = template_entry.to_string_lossy();
-        re.is_match(&path_str)
+        match re {
+            Ok(regex) => regex.is_match(&path_str),
+            Err(e) => {
+                error!("Regex error when checking if for loop exists in template filename: {}", e);
+                false
+            }
+        }
     }
 
     /// Processes a template entry and determines the appropriate operation.

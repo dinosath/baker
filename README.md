@@ -14,6 +14,7 @@
   - [Templated File Names](#templated-file-names)
   - [.bakerignore File](#bakerignore-file)
   - [Importing Jinja templates and macros](#importing-jinja-templates-and-macros)
+  - [Loop Templates and Delimiters](#loop-templates-and-delimiters)
 - [Recipes](#recipes)
   - [Passing Default Answers](#passing-default-answers)
   - [Non-Interactive Mode](#non-interactive-mode)
@@ -248,6 +249,47 @@ questions:
 ```
 
 This will include all files ending with .tpl and .jinja in the template engine, allowing you to use them in your templates.
+
+
+## Loop Templates and Delimiters
+
+Baker supports loop templates using MiniJinja for-loop blocks in template filenames. This allows you to generate multiple files based on a list of items in your answers.
+
+For example, a template file named:
+
+```
+{% for item in items %}{{ item.name }}.md.baker.j2{% endfor %}
+```
+will generate a file for each item in the `items` array, with the filename rendered from `item.name`.
+
+### loop_separator and loop_content_separator
+
+When rendering loop templates, Baker uses two configuration options to split and organize the generated content:
+
+- `loop_separator`: A string used to separate each file's content in the rendered output. This allows Baker to distinguish between multiple files generated from a single loop template. Default value is '<--SPLIT-->'.
+- `loop_content_separator`: A string used to separate the filename from the file content within each split section. This enables Baker to extract the correct filename and its corresponding content. Default value is '<<CONTENT>>'.
+
+**Example Usage:**
+
+Suppose your template renders the following output:
+
+```
+filename1.md<<CONTENT>>Content for file 1<--SPLIT-->
+filename2.md<<CONTENT>>Content for file 2<--SPLIT-->
+```
+
+Here, `<<CONTENT>>` is the `loop_content_separator` and `<--SPLIT-->` is the `loop_separator`. Baker will split the output on `<--SPLIT-->`, then split each part on `<<CONTENT>>` to get the filename and content for each file.
+
+You can configure these separators in your Baker settings or pass them to the processor:
+
+```yaml
+schemaVersion: v1
+template_suffix: ".baker.j2",
+loop_separator: "<--SPLIT-->",
+loop_content_separator: "<<CONTENT>>",
+```
+
+This mechanism allows flexible generation of multiple files from a single template, especially useful for code generation, documentation, or any batch file creation scenario.
 
 ## Recipes
 
