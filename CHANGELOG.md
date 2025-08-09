@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2025-08-09
+
+### 🚀 Features
+
+- Log ignore patterns and continue loop on TemplateOperation::Ignore
+- *(cli)* Add multi-level verbosity support
+- *(cli)* Add dry-run support for template processing (#63)
+- Support loop in templates (#65)
+
+### 🐛 Bug Fixes
+
+- Removed tests from mod.rs
+- Test_yaml_complex_type
+- Replace pipe symbol in template filenames for Windows compatibility
+- Replace pipe symbols in template filenames for Windows compatibility
+- Test_platform_variables should run on macos only
+- *(tests)* Change verbose field from boolean to integer in test utilities
+- *(cli,prompt)* Correct default log level and choice index handling
+- Dependabot dependencies update by removing custom workflow
+
+### 💼 Other
+
+- Reorganize dialoguer module into submodule
+
+### 🚜 Refactor
+
+- Renamed dialoguer to prompt
+- Decuple dialoguer from the interface
+- Removed legacy dialoguer code
+- Removed legacy tests
+- Parse methods were moved to parser.rs and covered with tests
+- Restructure loader module and simplify template engine API (#51)
+- *(cli)* Modularize CLI into focused sub-modules
+- *(cli)* Improve module encapsulation and remove ioutils dependencies
+- *(config)* Modularize configuration system into separate modules
+- Consolidate validation logic into answers module
+- *(renderer)* Modularize renderer into separate modules
+- *(cli)* Move template import functionality into Runner
+- [**breaking**] Modularize CLI components and improve hook handling
+- Replace path_to_str function with PathExt trait
+- Reduce test duplication (#58)
+- Introduce constants module and reorganize hooks
+
+### 📚 Documentation
+
+- Update installation links to use latest release URLs
+
+### 🧪 Testing
+
+- Add comprehensive integration tests for template features
+- Increase verbosity level in integration tests
+
+### ⚙️ Miscellaneous Tasks
+
+- Removed dialoguer/utils.ts
+- Added adapter.rs tests
+- *(ci)* Add GitHub automation and dependency management
+- Remove unnecessary GitHub pull request template
+- *(dependabot)* Remove deprecated reviewers field
+- Remove duplicate tests from build (#54)
+- Fix clippy errors
+- Increase test coverage (#64)
+
 ## [0.10.0] - 2025-06-28
 
 ### 🚀 Features
@@ -126,11 +189,6 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Trying to fix an issue with libz-sys on ARM64 Windows
-- Temporarily removed aarch64-pc-windows-msvc from build
 - Bump 0.5.0
 
 ## [0.4.0] - 2025-03-28
@@ -147,6 +205,14 @@ All notable changes to this project will be documented in this file.
 - Handle error when HOME directory is invalid
 - Logging imports and add debug logs for hook execution
 - Improve JSON parsing from hook output
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Trying to fix an issue with libz-sys on ARM64 Windows
+- Temporarily removed aarch64-pc-windows-msvc from build
 
 ## [0.3.0] - 2025-03-21
 
