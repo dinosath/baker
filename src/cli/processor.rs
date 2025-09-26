@@ -1,5 +1,5 @@
 use crate::{
-    cli::SkipConfirm,
+    cli::{context::GenerationContext, SkipConfirm},
     error::{Error, Result},
     prompt::confirm,
     template::{operation::TemplateOperation, processor::TemplateProcessor},
@@ -10,22 +10,20 @@ use walkdir::WalkDir;
 /// Handles the processing of template files and directories
 pub struct FileProcessor<'a> {
     processor: TemplateProcessor<'a, PathBuf>,
-    skip_confirms: &'a [SkipConfirm],
-    dry_run: bool,
+    context: &'a GenerationContext,
 }
 
 impl<'a> FileProcessor<'a> {
     pub fn new(
         processor: TemplateProcessor<'a, PathBuf>,
-        skip_confirms: &'a [SkipConfirm],
-        dry_run: bool,
+        context: &'a GenerationContext,
     ) -> Self {
-        Self { processor, skip_confirms, dry_run }
+        Self { processor, context }
     }
 
     /// Processes all files in the template directory
-    pub fn process_all_files(&self, template_root: &Path) -> Result<()> {
-        for dir_entry in WalkDir::new(template_root) {
+    pub fn process_all_files(&self) -> Result<()> {
+        for dir_entry in WalkDir::new(self.context.template_root()) {
             let template_entry = dir_entry?.path().to_path_buf();
             match self.processor.process(template_entry) {
                 Ok(file_operation) => {
@@ -40,7 +38,7 @@ impl<'a> FileProcessor<'a> {
                         },
                     };
                     let message = file_operation
-                        .get_message(user_confirmed_overwrite, self.dry_run);
+                        .get_message(user_confirmed_overwrite, self.context.dry_run());
                     log::info!("{message}");
                 }
                 Err(e) => match e {
@@ -105,7 +103,7 @@ impl<'a> FileProcessor<'a> {
     fn copy_file<P: AsRef<Path>>(&self, source_path: P, dest_path: P) -> Result<()> {
         let dest_path = dest_path.as_ref();
 
-        if self.dry_run {
+        if self.context.dry_run() {
             return Ok(());
         }
 
@@ -121,7 +119,7 @@ impl<'a> FileProcessor<'a> {
     fn write_file<P: AsRef<Path>>(&self, content: &str, dest_path: P) -> Result<()> {
         let dest_path = dest_path.as_ref();
 
-        if self.dry_run {
+        if self.context.dry_run() {
             return Ok(());
         }
 
@@ -135,7 +133,7 @@ impl<'a> FileProcessor<'a> {
 
     /// Create directory and all parent directories if they don't exist.
     fn create_dir_all<P: AsRef<Path>>(&self, dest_path: P) -> Result<()> {
-        if self.dry_run {
+        if self.context.dry_run() {
             return Ok(());
         }
 
@@ -144,8 +142,8 @@ impl<'a> FileProcessor<'a> {
 
     /// Determines if overwrite prompts should be skipped
     fn should_skip_overwrite_prompt(&self, target_exists: bool) -> bool {
-        self.skip_confirms.contains(&SkipConfirm::All)
-            || self.skip_confirms.contains(&SkipConfirm::Overwrite)
+        self.context.skip_confirms().contains(&SkipConfirm::All)
+            || self.context.skip_confirms().contains(&SkipConfirm::Overwrite)
             || !target_exists
     }
 }

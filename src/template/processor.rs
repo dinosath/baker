@@ -1,4 +1,5 @@
 use crate::{
+    cli::context::GenerationContext,
     error::{Error, Result},
     ext::PathExt,
     renderer::TemplateRenderer,
@@ -28,18 +29,31 @@ pub struct TemplateConfig<'a> {
     pub loop_content_separator: &'a str,
 }
 
-impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
+impl<'a> TemplateProcessor<'a, PathBuf> {
     pub fn new(
         engine: &'a dyn TemplateRenderer,
-        template_root: P,
-        output_root: P,
-        answers: &'a serde_json::Value,
+        context: &'a GenerationContext,
         bakerignore: &'a GlobSet,
-        template_config: TemplateConfig<'a>,
     ) -> Self {
-        Self { engine, template_root, output_root, answers, bakerignore, template_config }
-    }
+        let config = context.config();
+        let template_config = TemplateConfig {
+            template_suffix: config.template_suffix.as_str(),
+            loop_separator: config.loop_separator.as_str(),
+            loop_content_separator: config.loop_content_separator.as_str(),
+        };
 
+        Self {
+            engine,
+            bakerignore,
+            template_root: context.template_root().clone(),
+            output_root: context.output_root().clone(),
+            answers: context.answers(),
+            template_config,
+        }
+    }
+}
+
+impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// Validates whether the `rendered_entry` is properly rendered by comparing its components
     /// with those of the original `template_entry`. The validation ensures no parts of the path
     /// are empty after rendering.
@@ -315,9 +329,13 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{renderer::MiniJinjaRenderer, template::operation::TemplateOperation};
+    use crate::{
+        cli::context::GenerationContext, config::ConfigV1, renderer::MiniJinjaRenderer,
+        template::operation::TemplateOperation,
+    };
     use fs::File;
     use globset::GlobSetBuilder;
+    use indexmap::IndexMap;
     use serde_json::json;
     use std::io::Write;
     use tempfile::TempDir;
@@ -329,18 +347,29 @@ mod tests {
         let output_root = TempDir::new().unwrap();
         let engine = Box::new(MiniJinjaRenderer::new());
         let bakerignore = GlobSetBuilder::new().build().unwrap();
-        let answers = Box::new(answers);
-        let processor = TemplateProcessor::new(
-            Box::leak(engine),
+
+        let mut context = GenerationContext::new(
             template_root.path().to_path_buf(),
             output_root.path().to_path_buf(),
-            &*Box::leak(answers),
-            &*Box::leak(Box::new(bakerignore)),
-            TemplateConfig {
-                template_suffix: ".baker.j2",
-                loop_separator: "",
-                loop_content_separator: "",
+            ConfigV1 {
+                template_suffix: ".baker.j2".into(),
+                loop_separator: "".into(),
+                loop_content_separator: "".into(),
+                template_globs: Vec::new(),
+                questions: IndexMap::new(),
+                post_hook_filename: "post".into(),
+                pre_hook_filename: "pre".into(),
             },
+            Vec::new(),
+            false,
+        );
+        context.set_answers(answers);
+
+        let context = Box::leak(Box::new(context));
+        let processor = TemplateProcessor::new(
+            Box::leak(engine),
+            context,
+            &*Box::leak(Box::new(bakerignore)),
         );
         (template_root, output_root, processor)
     }
@@ -858,18 +887,7 @@ mod tests {
 
     #[test]
     fn test_is_template_with_loop_basic() {
-        let processor = TemplateProcessor::new(
-            Box::leak(Box::new(MiniJinjaRenderer::new())),
-            "./",
-            "./",
-            &*Box::leak(Box::new(json!({}))),
-            &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
-            TemplateConfig {
-                template_suffix: ".baker.j2",
-                loop_separator: "",
-                loop_content_separator: "",
-            },
-        );
+        let (_template_root, _output_root, processor) = new_test_processor(json!({}));
         let path = PathBuf::from(
             "{% for item in items %}{{ item.name }}.txt.baker.j2{% endfor %}",
         );
@@ -880,18 +898,7 @@ mod tests {
 
     #[test]
     fn test_is_template_with_loop_complex() {
-        let processor = TemplateProcessor::new(
-            Box::leak(Box::new(MiniJinjaRenderer::new())),
-            "./",
-            "./",
-            &*Box::leak(Box::new(json!({}))),
-            &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
-            TemplateConfig {
-                template_suffix: ".baker.j2",
-                loop_separator: "",
-                loop_content_separator: "",
-            },
-        );
+        let (_template_root, _output_root, processor) = new_test_processor(json!({}));
         let path = PathBuf::from("{% if msg==hello %}{%for item in items in selectattr(\"name\")%}{{item.name}}.rs.baker.j2{% endfor %}{% endif %}");
         assert!(processor.is_template_with_loop(path));
     }
