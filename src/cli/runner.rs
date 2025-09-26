@@ -131,10 +131,7 @@ impl Runner {
         }
 
         if context.dry_run() {
-            log::info!(
-                "[DRY RUN] Would execute pre-hook: {}",
-                hook_plan.pre_hook_file.display()
-            );
+            log_dry_run_action("Would execute pre-hook", &hook_plan.pre_hook_file);
             return Ok(None);
         }
 
@@ -186,10 +183,7 @@ impl Runner {
         }
 
         if context.dry_run() {
-            log::info!(
-                "[DRY RUN] Would execute post-hook: {}",
-                hook_plan.post_hook_file.display()
-            );
+            log_dry_run_action("Would execute post-hook", &hook_plan.post_hook_file);
             return Ok(());
         }
 
@@ -210,17 +204,7 @@ impl Runner {
     }
 
     fn finish(&self, context: &GenerationContext) {
-        if context.dry_run() {
-            println!(
-                "[DRY RUN] Template processing completed. No files were actually created in {}.",
-                context.output_root().display()
-            );
-        } else {
-            println!(
-                "Template generation completed successfully in {}.",
-                context.output_root().display()
-            );
-        }
+        println!("{}", completion_message(context.dry_run(), context.output_root()));
     }
 
     /// Determines if overwrite prompts should be skipped
@@ -249,7 +233,7 @@ impl Runner {
             });
         }
         if dry_run {
-            log::info!("[DRY RUN] Would use output directory: {}", output_dir.display());
+            log_dry_run_action("Would use output directory", output_dir);
         }
         Ok(output_dir.to_path_buf())
     }
@@ -407,6 +391,26 @@ struct HookPlan {
     pre_hook_file: PathBuf,
     post_hook_file: PathBuf,
     execute_hooks: bool,
+}
+
+/// Emits a standardised dry-run log entry for the supplied action and filesystem target.
+fn log_dry_run_action<A: AsRef<Path>>(action: &str, target: A) {
+    log::info!("[DRY RUN] {}: {}", action, target.as_ref().display());
+}
+
+/// Produces the user-facing completion string for the current run, accounting for dry-run mode.
+fn completion_message(dry_run: bool, output_root: &Path) -> String {
+    if dry_run {
+        format!(
+            "[DRY RUN] Template processing completed. No files were actually created in {}.",
+            output_root.display()
+        )
+    } else {
+        format!(
+            "Template generation completed successfully in {}.",
+            output_root.display()
+        )
+    }
 }
 
 /// Main entry point for CLI execution
