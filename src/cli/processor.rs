@@ -2,7 +2,10 @@ use crate::{
     cli::{context::GenerationContext, SkipConfirm},
     error::{Error, Result},
     prompt::confirm,
-    template::{operation::TemplateOperation, processor::TemplateProcessor},
+    template::{
+        operation::{TemplateOperation, WriteOp},
+        processor::TemplateProcessor,
+    },
 };
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -55,48 +58,68 @@ impl<'a> FileProcessor<'a> {
         log::debug!("Handling file operation: {file_operation:?}");
         match file_operation {
             TemplateOperation::Write { target, target_exists, content, .. } => {
-                let skip_prompt = self.should_skip_overwrite_prompt(*target_exists);
-                let user_confirmed =
-                    confirm(skip_prompt, format!("Overwrite {}?", target.display()))?;
-
-                if user_confirmed {
-                    self.write_file(content, target)?;
-                }
-                Ok(user_confirmed)
+                self.handle_write(target, *target_exists, content)
             }
             TemplateOperation::Copy { target, target_exists, source, .. } => {
-                let skip_prompt = self.should_skip_overwrite_prompt(*target_exists);
-                let user_confirmed =
-                    confirm(skip_prompt, format!("Overwrite {}?", target.display()))?;
-
-                if user_confirmed {
-                    self.copy_file(source, target)?;
-                }
-                Ok(user_confirmed)
+                self.handle_copy(source, target, *target_exists)
             }
             TemplateOperation::CreateDirectory { target, target_exists } => {
-                if !target_exists {
-                    self.create_dir_all(target)?;
-                }
-                Ok(true)
+                self.handle_create_dir(target, *target_exists)
             }
             TemplateOperation::Ignore { .. } => Ok(true),
             TemplateOperation::MultipleWrite { writes, .. } => {
-                for write in writes {
-                    let skip_prompt =
-                        self.should_skip_overwrite_prompt(write.target_exists);
-                    let user_confirmed = confirm(
-                        skip_prompt,
-                        format!("Overwrite {}?", write.target.display()),
-                    )?;
-
-                    if user_confirmed {
-                        self.write_file(&write.content, &write.target)?;
-                    }
-                }
-                Ok(true)
+                self.handle_multiple_write(writes)
             }
         }
+    }
+
+    fn handle_write(
+        &self,
+        target: &Path,
+        target_exists: bool,
+        content: &str,
+    ) -> Result<bool> {
+        let user_confirmed = self.confirm_overwrite(target, target_exists)?;
+        if user_confirmed {
+            self.write_file(content, target)?;
+        }
+        Ok(user_confirmed)
+    }
+
+    fn handle_copy(
+        &self,
+        source: &Path,
+        target: &Path,
+        target_exists: bool,
+    ) -> Result<bool> {
+        let user_confirmed = self.confirm_overwrite(target, target_exists)?;
+        if user_confirmed {
+            self.copy_file(source, target)?;
+        }
+        Ok(user_confirmed)
+    }
+
+    fn handle_create_dir(&self, target: &Path, target_exists: bool) -> Result<bool> {
+        if !target_exists {
+            self.create_dir_all(target)?;
+        }
+        Ok(true)
+    }
+
+    fn handle_multiple_write(&self, writes: &[WriteOp]) -> Result<bool> {
+        for write in writes {
+            let user_confirmed =
+                self.confirm_overwrite(&write.target, write.target_exists)?;
+            if user_confirmed {
+                self.write_file(&write.content, &write.target)?;
+            }
+        }
+        Ok(true)
+    }
+
+    fn confirm_overwrite(&self, target: &Path, target_exists: bool) -> Result<bool> {
+        let skip_prompt = self.should_skip_overwrite_prompt(target_exists);
+        confirm(skip_prompt, format!("Overwrite {}?", target.display()))
     }
 
     /// Copy a file from source to destination, creating parent directories if needed.
