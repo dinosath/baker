@@ -14,7 +14,10 @@ use crate::{
 };
 use serde_json::Value;
 
-/// Creates and executes prompts based on context configuration
+/// Coordinates a [`PromptProvider`] to ask a question described by a [`PromptContext`].
+///
+/// The handler inspects the `Question` metadata, builds the appropriate configuration
+/// struct, and delegates to the provider so callers do not need to match on question types.
 pub struct PromptHandler<P: PromptProvider> {
     provider: P,
 }
