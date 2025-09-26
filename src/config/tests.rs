@@ -10,7 +10,7 @@ mod config_tests {
     use crate::template::get_template_engine;
 
     #[test]
-    fn it_works_1() {
+    fn renders_boolean_question_with_template_help() {
         let question = Question {
             help: "Hello, {{prev_answer}}".to_string(),
             r#type: Type::Bool,
@@ -37,7 +37,7 @@ mod config_tests {
     }
 
     #[test]
-    fn it_works_2() {
+    fn multiple_choice_question_retains_defaults() {
         let question = Question {
             help: "{{question}}".to_string(),
             r#type: Type::Str,
@@ -70,7 +70,7 @@ mod config_tests {
     }
 
     #[test]
-    fn it_works_3() {
+    fn text_question_condition_true_when_answer_missing() {
         let question = Question {
             help: "".to_string(),
             r#type: Type::Str,
@@ -93,7 +93,7 @@ mod config_tests {
     }
 
     #[test]
-    fn it_works_4() {
+    fn text_question_condition_false_when_answer_present() {
         let question = Question {
             help: "".to_string(),
             r#type: Type::Str,
@@ -116,7 +116,7 @@ mod config_tests {
     }
 
     #[test]
-    fn it_works_5() {
+    fn prefilled_answer_overrides_text_default() {
         let question = Question {
             help: "".to_string(),
             r#type: Type::Str,
@@ -140,7 +140,7 @@ mod config_tests {
     }
 
     #[test]
-    fn it_works_6() {
+    fn text_question_uses_default_when_answer_absent() {
         let question = Question {
             help: "".to_string(),
             r#type: Type::Str,

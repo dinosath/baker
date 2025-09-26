@@ -405,7 +405,7 @@ mod tests {
     /// {"file_name": "hello_world", "greetings": "Hello, World"}
     ///
     #[test]
-    fn it_works_1() {
+    fn renders_template_file_with_answers() {
         let answers = json!({"file_name": "hello_world", "greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}.txt.baker.j2");
@@ -434,7 +434,7 @@ mod tests {
     /// {}
     ///
     #[test]
-    fn it_works_3() {
+    fn copies_plain_file_without_suffix() {
         let answers = json!({});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("hello_world.txt");
@@ -463,7 +463,7 @@ mod tests {
     /// {"directory_name": "hello"}
     ///
     #[test]
-    fn it_works_4() {
+    fn renders_nested_directory_and_file() {
         let answers = json!({"directory_name": "hello", "greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path = template_root.path().join("{{directory_name}}");
@@ -496,7 +496,7 @@ mod tests {
     /// {"file_name": "world"}
     ///
     #[test]
-    fn it_works_5() {
+    fn errors_when_directory_placeholder_missing() {
         let answers = json!({"file_name": "world.txt"});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let nested_directory_path = template_root.path().join("{{directory_name}}");
@@ -525,7 +525,7 @@ mod tests {
     /// {"create_dir": true}
     ///
     #[test]
-    fn it_works_6() {
+    fn creates_directory_when_condition_is_true() {
         let answers = json!({"create_dir": true});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
@@ -552,7 +552,7 @@ mod tests {
     /// {"create_dir": false}
     ///
     #[test]
-    fn it_works_7() {
+    fn errors_when_conditional_directory_missing() {
         let answers = json!({"create_dir": false});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
@@ -581,7 +581,7 @@ mod tests {
     /// {"create_dir": true}
     ///
     #[test]
-    fn it_works_8() {
+    fn copies_file_inside_conditional_directory() {
         let answers = json!({"create_dir": true});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
@@ -616,7 +616,7 @@ mod tests {
     /// {"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"}
     ///
     #[test]
-    fn it_works_9() {
+    fn renders_template_filename_and_strips_suffix() {
         let answers =
             json!({"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
@@ -646,7 +646,7 @@ mod tests {
     /// {"greetings": "Hello, World"}
     ///
     #[test]
-    fn it_works_10() {
+    fn copies_non_template_file_with_j2_extension() {
         let answers = json!({"greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("hello_world.j2");
@@ -675,7 +675,7 @@ mod tests {
     /// {"first_name": "Ali", "last_name": "Aliyev"}
     ///
     #[test]
-    fn it_works_11() {
+    fn renders_readme_template_content() {
         let answers = json!({"first_name": "Ali", "last_name": "Aliyev"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("README.baker.j2");
@@ -704,7 +704,7 @@ mod tests {
     /// {"first_name": "Ali", "last_name": "Aliyev", "file_name": "README"}
     ///
     #[test]
-    fn it_works_12() {
+    fn renders_templated_filename_and_content() {
         let answers =
             json!({"first_name": "Ali", "last_name": "Aliyev", "file_name": "README"});
         let (template_root, output_root, processor) = new_test_processor(answers);
@@ -749,7 +749,7 @@ mod tests {
             }
         Expected result: `Error::ProcessError`
     "#]
-    fn it_works_14() {
+    fn renders_invalid_filename_returns_error() {
         let answers = json!({});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}.baker.j2");
@@ -774,7 +774,7 @@ mod tests {
     /// {}
     ///
     #[test]
-    fn it_works_15() {
+    fn renders_directory_placeholder_returns_error() {
         let answers = json!({});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}");
@@ -816,7 +816,7 @@ mod tests {
             }
         Expected result: `Error::ProcessError`
     "#]
-    fn it_works_16() {
+    fn renders_plain_file_placeholder_returns_error() {
         let answers = json!({});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}.txt");
