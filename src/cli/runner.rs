@@ -34,66 +34,43 @@ impl Runner {
     /// Executes the complete template generation workflow
     pub fn run(self) -> Result<()> {
         let mut engine = get_template_engine();
+        let SetupResult { template_root, output_root, config } =
+            self.prepare_environment(&mut engine)?;
 
-        let output_root = self.get_output_dir(
-            &self.args.output_dir,
-            self.args.force,
-            self.args.dry_run,
-        )?;
+        let hook_plan = self.prepare_hooks(&template_root, &config, &engine)?;
 
-        let template_root = get_template(
-            self.args.template.as_str(),
-            self.should_skip_overwrite_prompts(),
-        )?;
+        let pre_hook_output =
+            self.maybe_run_pre_hook(&hook_plan, &template_root, &output_root)?;
 
-        let config = self.load_and_validate_config(&template_root)?;
+        let answers = self.gather_answers(&config, &engine, pre_hook_output)?;
 
-        self.add_templates_in_renderer(&template_root, &config, &mut engine);
+        self.process_templates(&template_root, &output_root, &config, &engine, &answers)?;
 
-        let (pre_hook_file, post_hook_file, execute_hooks) =
-            self.setup_hooks(&template_root, &config, &engine)?;
+        self.maybe_run_post_hook(&hook_plan, &template_root, &output_root, &answers)?;
 
-        // Execute pre-generation hook
-        let pre_hook_output = self.execute_pre_hook(
-            &template_root,
-            &output_root,
-            &pre_hook_file,
-            execute_hooks && !self.args.dry_run,
-        )?;
+        self.finish(&output_root);
 
-        // Collect answers from all sources
-        let answers = self.collect_answers(&config, &engine, pre_hook_output)?;
-
-        // Process template files
-        self.process_template_files(
-            &template_root,
-            &output_root,
-            &config,
-            &engine,
-            &answers,
-        )?;
-
-        // Execute post-generation hook
-        self.execute_post_hook(
-            &template_root,
-            &output_root,
-            &post_hook_file,
-            &answers,
-            execute_hooks && !self.args.dry_run,
-        )?;
-
-        if self.args.dry_run {
-            println!(
-                "[DRY RUN] Template processing completed. No files were actually created in {}.",
-                output_root.display()
-            );
-        } else {
-            println!(
-                "Template generation completed successfully in {}.",
-                output_root.display()
-            );
-        }
         Ok(())
+    }
+
+    fn prepare_environment(
+        &self,
+        engine: &mut dyn TemplateRenderer,
+    ) -> Result<SetupResult> {
+        let output_root = self.prepare_output_dir()?;
+        let template_root = self.resolve_template()?;
+        let config = self.load_and_validate_config(&template_root)?;
+        self.add_templates_in_renderer(&template_root, &config, engine);
+
+        Ok(SetupResult { template_root, output_root, config })
+    }
+
+    fn prepare_output_dir(&self) -> Result<PathBuf> {
+        self.get_output_dir(&self.args.output_dir, self.args.force, self.args.dry_run)
+    }
+
+    fn resolve_template(&self) -> Result<PathBuf> {
+        get_template(self.args.template.as_str(), self.should_skip_overwrite_prompts())
     }
 
     /// Loads and validates the template configuration
@@ -107,13 +84,12 @@ impl Runner {
         Ok(config)
     }
 
-    /// Sets up pre and post hook files
-    fn setup_hooks(
+    fn prepare_hooks(
         &self,
         template_root: &PathBuf,
         config: &crate::config::ConfigV1,
         engine: &dyn crate::renderer::TemplateRenderer,
-    ) -> Result<(PathBuf, PathBuf, bool)> {
+    ) -> Result<HookPlan> {
         let pre_hook_filename = engine.render(
             &config.pre_hook_filename,
             &json!({}),
@@ -135,37 +111,37 @@ impl Runner {
         let (pre_hook_file, post_hook_file) =
             self.get_hook_files(template_root, &pre_hook_filename, &post_hook_filename);
 
-        Ok((pre_hook_file, post_hook_file, execute_hooks))
+        Ok(HookPlan { pre_hook_file, post_hook_file, execute_hooks })
     }
 
-    /// Executes the pre-generation hook if it exists
-    fn execute_pre_hook(
+    fn maybe_run_pre_hook(
         &self,
+        hook_plan: &HookPlan,
         template_root: &PathBuf,
         output_root: &PathBuf,
-        pre_hook_file: &PathBuf,
-        execute_hooks: bool,
     ) -> Result<Option<String>> {
-        if pre_hook_file.exists() {
-            if self.args.dry_run {
-                log::info!(
-                    "[DRY RUN] Would execute pre-hook: {}",
-                    pre_hook_file.display()
-                );
-                Ok(None)
-            } else if execute_hooks {
-                log::debug!("Executing pre-hook: {}", pre_hook_file.display());
-                run_hook(template_root, output_root, pre_hook_file, None)
-            } else {
-                Ok(None)
-            }
+        if !hook_plan.pre_hook_file.exists() {
+            return Ok(None);
+        }
+
+        if self.args.dry_run {
+            log::info!(
+                "[DRY RUN] Would execute pre-hook: {}",
+                hook_plan.pre_hook_file.display()
+            );
+            return Ok(None);
+        }
+
+        if hook_plan.execute_hooks {
+            log::debug!("Executing pre-hook: {}", hook_plan.pre_hook_file.display());
+            run_hook(template_root, output_root, &hook_plan.pre_hook_file, None)
         } else {
             Ok(None)
         }
     }
 
     /// Collects answers from all available sources
-    fn collect_answers(
+    fn gather_answers(
         &self,
         config: &crate::config::ConfigV1,
         engine: &dyn crate::renderer::TemplateRenderer,
@@ -176,7 +152,7 @@ impl Runner {
     }
 
     /// Processes all template files
-    fn process_template_files(
+    fn process_templates(
         &self,
         template_root: &PathBuf,
         output_root: &Path,
@@ -204,32 +180,53 @@ impl Runner {
         file_processor.process_all_files(template_root)
     }
 
-    /// Executes the post-generation hook if it exists
-    fn execute_post_hook(
+    fn maybe_run_post_hook(
         &self,
+        hook_plan: &HookPlan,
         template_root: &PathBuf,
         output_root: &PathBuf,
-        post_hook_file: &PathBuf,
         answers: &serde_json::Value,
-        execute_hooks: bool,
     ) -> Result<()> {
-        if post_hook_file.exists() {
-            if self.args.dry_run {
-                log::info!(
-                    "[DRY RUN] Would execute post-hook: {}",
-                    post_hook_file.display()
-                );
-            } else if execute_hooks {
-                log::debug!("Executing post-hook: {}", post_hook_file.display());
-                let post_hook_stdout =
-                    run_hook(template_root, output_root, post_hook_file, Some(answers))?;
+        if !hook_plan.post_hook_file.exists() {
+            return Ok(());
+        }
 
-                if let Some(result) = post_hook_stdout {
-                    log::debug!("Post-hook stdout content: {result}");
-                }
+        if self.args.dry_run {
+            log::info!(
+                "[DRY RUN] Would execute post-hook: {}",
+                hook_plan.post_hook_file.display()
+            );
+            return Ok(());
+        }
+
+        if hook_plan.execute_hooks {
+            log::debug!("Executing post-hook: {}", hook_plan.post_hook_file.display());
+            let post_hook_stdout = run_hook(
+                template_root,
+                output_root,
+                &hook_plan.post_hook_file,
+                Some(answers),
+            )?;
+
+            if let Some(result) = post_hook_stdout {
+                log::debug!("Post-hook stdout content: {result}");
             }
         }
         Ok(())
+    }
+
+    fn finish(&self, output_root: &Path) {
+        if self.args.dry_run {
+            println!(
+                "[DRY RUN] Template processing completed. No files were actually created in {}.",
+                output_root.display()
+            );
+        } else {
+            println!(
+                "Template generation completed successfully in {}.",
+                output_root.display()
+            );
+        }
     }
 
     /// Determines if overwrite prompts should be skipped
@@ -410,6 +407,18 @@ impl Runner {
             String::new()
         }
     }
+}
+
+struct SetupResult {
+    template_root: PathBuf,
+    output_root: PathBuf,
+    config: ConfigV1,
+}
+
+struct HookPlan {
+    pre_hook_file: PathBuf,
+    post_hook_file: PathBuf,
+    execute_hooks: bool,
 }
 
 /// Main entry point for CLI execution
