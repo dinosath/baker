@@ -7,6 +7,7 @@
 
 ## Table of Contents
 
+- [Architecture Overview](#architecture-overview)
 - [Installation](#installation)
 - [Project template example](#project-template-example)
   - [baker.yaml File](#bakeryaml-file)
@@ -38,6 +39,10 @@
 - [Built-in Filters](#built-in-filters)
 - [Comparing Baker to other project generators](#comparing-baker-to-other-project-generators)
 - [Community Templates](#community-templates)
+
+## Architecture Overview
+
+Looking for an end-to-end view of the codebase? See [`docs/architecture.md`](docs/architecture.md) for a tour of the CLI runner, configuration loader, prompt layer, template processor, and supporting modules.
 
 ## Installation
 
