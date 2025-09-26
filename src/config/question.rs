@@ -68,36 +68,99 @@ impl IntoQuestionType for Question {
 }
 
 impl Question {
-    fn process_structured_default_value(
+    fn question_type(&self) -> QuestionType {
+        self.into_question_type()
+    }
+
+    fn prefilled_answer(
+        &self,
+        question_key: &str,
+        answers: &serde_json::Value,
+    ) -> Option<serde_json::Value> {
+        answers.get(question_key).cloned()
+    }
+
+    fn render_default_value(
+        &self,
+        question_key: &str,
+        answers: &serde_json::Value,
+        engine: &dyn TemplateRenderer,
+        question_type: &QuestionType,
+    ) -> serde_json::Value {
+        if let Some(answer) = self.prefilled_answer(question_key, answers) {
+            return answer;
+        }
+
+        let default = self.default.clone();
+        match question_type {
+            QuestionType::MultipleChoice => default,
+            QuestionType::Boolean => {
+                serde_json::Value::Bool(default.as_bool().unwrap_or(false))
+            }
+            QuestionType::SingleChoice | QuestionType::Text => {
+                self.render_textual_default(default, answers, engine)
+            }
+            QuestionType::Json | QuestionType::Yaml => {
+                self.render_structured_default(default, answers, engine, question_type)
+            }
+        }
+    }
+
+    fn render_textual_default(
+        &self,
+        default: serde_json::Value,
+        answers: &serde_json::Value,
+        engine: &dyn TemplateRenderer,
+    ) -> serde_json::Value {
+        let default_str = default.as_str().unwrap_or_default();
+        let rendered = engine
+            .render(default_str, answers, Some("default_value"))
+            .unwrap_or_default();
+        serde_json::Value::String(rendered)
+    }
+
+    fn render_structured_default(
         &self,
         default: serde_json::Value,
         answers: &serde_json::Value,
         engine: &dyn TemplateRenderer,
         question_type: &QuestionType,
     ) -> serde_json::Value {
-        // If the default is already a JSON object or array, use it directly
         if default.is_object() || default.is_array() {
-            default
-        } else if let Some(default_str) = default.as_str() {
-            // If it's a string, try to render it as a template first
+            return default;
+        }
+
+        if let Some(default_str) = default.as_str() {
             let rendered_str = engine
                 .render(default_str, answers, Some("default_value"))
-                .unwrap_or(default_str.to_string());
+                .unwrap_or_else(|_| default_str.to_string());
 
-            // Parse the string based on the question type
-            match question_type {
-                QuestionType::Json => {
-                    serde_json::from_str(&rendered_str).unwrap_or(serde_json::json!({}))
-                }
-                QuestionType::Yaml => {
-                    serde_yaml::from_str(&rendered_str).unwrap_or(serde_json::json!({}))
-                }
-                _ => unreachable!(),
-            }
-        } else {
-            // Fallback to empty object
-            serde_json::json!({})
+            return match question_type {
+                QuestionType::Json => serde_json::from_str(&rendered_str)
+                    .unwrap_or_else(|_| serde_json::json!({})),
+                QuestionType::Yaml => serde_yaml::from_str(&rendered_str)
+                    .unwrap_or_else(|_| serde_json::json!({})),
+                _ => serde_json::json!({}),
+            };
         }
+
+        serde_json::json!({})
+    }
+
+    fn render_help_text(
+        &self,
+        answers: &serde_json::Value,
+        engine: &dyn TemplateRenderer,
+    ) -> String {
+        engine.render(&self.help, answers, Some("help")).unwrap_or(self.help.clone())
+    }
+
+    fn evaluate_condition(
+        &self,
+        answers: &serde_json::Value,
+        engine: &dyn TemplateRenderer,
+    ) -> bool {
+        engine.execute_expression(&self.ask_if, answers).unwrap_or(true)
     }
 
     pub fn render(
@@ -106,47 +169,84 @@ impl Question {
         answers: &serde_json::Value,
         engine: &dyn TemplateRenderer,
     ) -> QuestionRendered {
-        // Renders default.
-        let default = if let Some(answer) = answers.get(question_key) {
-            // If answer in pre-filled answers we just return them as it is.
-            answer.to_owned()
-        } else {
-            let default = self.default.clone();
-            match self.into_question_type() {
-                QuestionType::MultipleChoice => default,
-                QuestionType::Boolean => {
-                    let val = default.as_bool().unwrap_or(false);
-                    serde_json::Value::Bool(val)
-                }
-                QuestionType::SingleChoice | QuestionType::Text => {
-                    // Trying to extract str from default which is serde_json::Value,
-                    // otherwise it return empty slice.
-                    let default_str = default.as_str().unwrap_or_default();
+        let question_type = self.question_type();
+        let default =
+            self.render_default_value(question_key, answers, engine, &question_type);
+        let help = self.render_help_text(answers, engine);
+        let ask_if = self.evaluate_condition(answers, engine);
 
-                    // Trying to render given string.
-                    // Otherwise returns an empty string.
-                    let default_rendered = engine
-                        .render(default_str, answers, Some("default_value"))
-                        .unwrap_or_default();
-                    serde_json::Value::String(default_rendered)
-                }
-                QuestionType::Json | QuestionType::Yaml => self
-                    .process_structured_default_value(
-                        default,
-                        answers,
-                        engine,
-                        &self.into_question_type(),
-                    ),
-            }
-        };
+        QuestionRendered { default, ask_if, help, r#type: question_type }
+    }
+}
 
-        // Sometimes "help" contain the value with the template strings.
-        // This function renders it and returns rendered value.
-        let help =
-            engine.render(&self.help, answers, Some("help")).unwrap_or(self.help.clone());
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::renderer::MiniJinjaRenderer;
+    use serde_json::json;
 
-        let ask_if = engine.execute_expression(&self.ask_if, answers).unwrap_or(true);
+    fn build_renderer() -> MiniJinjaRenderer {
+        MiniJinjaRenderer::new()
+    }
 
-        QuestionRendered { default, ask_if, help, r#type: self.into_question_type() }
+    fn base_question(r#type: Type, default: serde_json::Value) -> Question {
+        Question {
+            help: "Help".to_string(),
+            r#type,
+            default,
+            choices: vec![],
+            multiselect: false,
+            secret: None,
+            ask_if: String::new(),
+            schema: None,
+            validation: get_default_validation(),
+        }
+    }
+
+    #[test]
+    fn uses_prefilled_answer_when_present() {
+        let question = base_question(Type::Str, json!("ignored"));
+        let answers = json!({ "name": "prefilled" });
+        let renderer = build_renderer();
+
+        let rendered = question.render("name", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!("prefilled"));
+        assert!(rendered.ask_if);
+    }
+
+    #[test]
+    fn renders_text_default_through_template_engine() {
+        let mut question = base_question(Type::Str, json!("{{ project }}"));
+        question.help = "{{ project }} help".to_string();
+        let answers = json!({ "project": "Demo" });
+        let renderer = build_renderer();
+
+        let rendered = question.render("name", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!("Demo"));
+        assert_eq!(rendered.help, "Demo help");
+    }
+
+    #[test]
+    fn renders_structured_json_default_from_string() {
+        let question = base_question(Type::Json, json!("{\"enabled\": true}"));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("settings", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!({ "enabled": true }));
+    }
+
+    #[test]
+    fn invalid_structured_default_falls_back_to_empty_object() {
+        let question = base_question(Type::Json, json!("not-valid"));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("settings", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!({}));
     }
 }
