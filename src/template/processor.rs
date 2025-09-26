@@ -6,7 +6,7 @@ use crate::{
     template::operation::{TemplateOperation, TemplateOperation::MultipleWrite, WriteOp},
 };
 use globset::GlobSet;
-use log::{debug, error};
+use log::debug;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,8 @@ pub struct TemplateProcessor<'a, P: AsRef<Path>> {
     output_root: P,
     answers: &'a serde_json::Value,
     template_config: TemplateConfig<'a>,
+    loop_detector: Regex,
+    loop_end_regex: Regex,
 }
 
 pub struct TemplateConfig<'a> {
@@ -49,6 +51,10 @@ impl<'a> TemplateProcessor<'a, PathBuf> {
             output_root: context.output_root().clone(),
             answers: context.answers(),
             template_config,
+            loop_detector: Regex::new(r"\{\%\s*for\s+.*in.*\%\}")
+                .expect("valid for-loop regex"),
+            loop_end_regex: Regex::new(r"(\{\%\s*endfor\s*\%\})")
+                .expect("valid endfor regex"),
         }
     }
 }
@@ -75,7 +81,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// - Template path: `template_root/{% if create_tests %}tests{% endif %}/`
     /// - Rendered path (when create_tests=false): `template_root//` (contains empty part)
     ///
-    fn has_valid_rendered_path_parts<S: AsRef<str>>(
+    fn rendered_path_has_valid_parts<S: AsRef<str>>(
         &self,
         template_path: S,
         rendered_path: S,
@@ -127,7 +133,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     fn render_template_entry(&self, template_entry: &Path) -> Result<PathBuf> {
         let rendered_entry = self.engine.render_path(template_entry, self.answers)?;
 
-        if !self.has_valid_rendered_path_parts(
+        if !self.rendered_path_has_valid_parts(
             template_entry.to_str_checked()?,
             &rendered_entry,
         ) {
@@ -181,16 +187,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     }
 
     /// Returns true if the path contains any MiniJinja for-loop block delimiters anywhere in the path (not just filename).
-    pub fn is_template_with_loop(&self, template_entry: PathBuf) -> bool {
-        let re = Regex::new(r"\{\%\s*for\s+.*in.*\%\}");
-        let path_str = template_entry.to_string_lossy();
-        match re {
-            Ok(regex) => regex.is_match(&path_str),
-            Err(e) => {
-                error!("Regex error when checking if for loop exists in template filename: {}", e);
-                false
-            }
-        }
+    pub fn is_template_with_loop<T: AsRef<Path>>(&self, template_entry: T) -> bool {
+        let path_str = template_entry.as_ref().to_string_lossy();
+        self.loop_detector.is_match(&path_str)
     }
 
     /// Processes a template entry and determines the appropriate operation.
@@ -219,7 +218,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 let template_content = fs::read_to_string(&template_entry)?;
                 let template_name =
                     template_entry.file_name().and_then(|name| name.to_str());
-                if self.is_template_with_loop(template_entry.clone()) {
+                if self.is_template_with_loop(&template_entry) {
                     debug!("found loop template file: {}", template_entry.display());
                     return self
                         .render_loop_template_file(&template_entry, template_name);
@@ -272,39 +271,19 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         let rendered_parent_dir =
             self.render_template_entry(template_parent_dir.as_path())?;
         let raw_template_content = fs::read_to_string(template_entry)?;
-        let endfor_regex = Regex::new(r"(\{\%\s*endfor\s*\%\})").unwrap();
-        let injected_content = format!(
-            "{}{}{}$1",
-            self.template_config.loop_content_separator,
-            raw_template_content,
-            self.template_config.loop_separator
-        );
         let template_with_injected_content =
-            endfor_regex.replace_all(template_entry.to_str().unwrap(), injected_content);
+            self.inject_loop_content(template_entry, &raw_template_content)?;
         let rendered_content = self.engine.render(
             &template_with_injected_content,
             self.answers,
             template_name,
         )?;
         debug!("rendered content: {rendered_content}");
-        let file_content_pairs = self.split_content(&rendered_content);
-        let write_operations = file_content_pairs
-            .into_iter()
-            .map(|(rendered_filename, content)| {
-                let mut output_file_path = PathBuf::from(&rendered_filename);
-                if !output_file_path.starts_with(rendered_parent_dir.as_path()) {
-                    output_file_path = rendered_parent_dir.join(&rendered_filename);
-                }
-                let final_output_path =
-                    self.get_target_path(&output_file_path, template_entry)?;
-                let target_exists = final_output_path.exists();
-                Ok(WriteOp {
-                    target: self.remove_template_suffix(&final_output_path)?,
-                    content,
-                    target_exists,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let write_operations = self.collect_loop_write_ops(
+            &rendered_content,
+            rendered_parent_dir.as_path(),
+            template_entry,
+        )?;
         Ok(MultipleWrite { writes: write_operations })
     }
 
@@ -321,6 +300,46 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 let filename = sections.next()?.trim().to_string();
                 let content = sections.next()?.trim().to_string();
                 Some((filename, content))
+            })
+            .collect()
+    }
+
+    fn inject_loop_content(
+        &self,
+        template_entry: &Path,
+        raw_template_content: &str,
+    ) -> Result<String> {
+        let injected_content = format!(
+            "{}{}{}$1",
+            self.template_config.loop_content_separator,
+            raw_template_content,
+            self.template_config.loop_separator
+        );
+        let template_str = template_entry.to_str_checked()?;
+        Ok(self.loop_end_regex.replace_all(template_str, injected_content).into_owned())
+    }
+
+    fn collect_loop_write_ops(
+        &self,
+        rendered_content: &str,
+        rendered_parent_dir: &Path,
+        template_entry: &Path,
+    ) -> Result<Vec<WriteOp>> {
+        self.split_content(rendered_content)
+            .into_iter()
+            .map(|(rendered_filename, content)| {
+                let mut output_file_path = PathBuf::from(&rendered_filename);
+                if !output_file_path.starts_with(rendered_parent_dir) {
+                    output_file_path = rendered_parent_dir.join(&rendered_filename);
+                }
+                let final_output_path =
+                    self.get_target_path(&output_file_path, template_entry)?;
+                let target_exists = final_output_path.exists();
+                Ok(WriteOp {
+                    target: self.remove_template_suffix(&final_output_path)?,
+                    content,
+                    target_exists,
+                })
             })
             .collect()
     }
