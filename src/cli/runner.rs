@@ -104,6 +104,8 @@ impl Runner {
             &json!({}),
             Some(&config.post_hook_filename),
         )?;
+        let pre_hook_runner = render_hook_runner(engine, &config.pre_hook_runner)?;
+        let post_hook_runner = render_hook_runner(engine, &config.post_hook_runner)?;
 
         let execute_hooks = self.confirm_hook_execution(
             context.template_root(),
@@ -118,7 +120,13 @@ impl Runner {
             &post_hook_filename,
         );
 
-        Ok(HookPlan { pre_hook_file, post_hook_file, execute_hooks })
+        Ok(HookPlan {
+            pre_hook_file,
+            post_hook_file,
+            execute_hooks,
+            pre_hook_runner,
+            post_hook_runner,
+        })
     }
 
     fn maybe_run_pre_hook(
@@ -391,6 +399,18 @@ struct HookPlan {
     pre_hook_file: PathBuf,
     post_hook_file: PathBuf,
     execute_hooks: bool,
+    pre_hook_runner: Vec<String>,
+    post_hook_runner: Vec<String>,
+}
+
+fn render_hook_runner(
+    engine: &dyn TemplateRenderer,
+    runner_tokens: &[String],
+) -> Result<Vec<String>> {
+    runner_tokens
+        .iter()
+        .map(|token| engine.render(token, &json!({}), Some("hook_runner")))
+        .collect()
 }
 
 /// Emits a standardised dry-run log entry for the supplied action and filesystem target.
