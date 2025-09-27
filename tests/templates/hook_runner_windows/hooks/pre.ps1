@@ -1,4 +1,7 @@
-$inputJson = Get-Content -Raw
+$inputJson = [Console]::In.ReadToEnd()
+if (-not $inputJson) {
+    throw "Hook did not receive any input"
+}
 $data = $inputJson | ConvertFrom-Json
 $outPath = Join-Path $data.output_dir "pre-hook.txt"
-"pre hook executed via powershell runner" | Set-Content -Path $outPath -NoNewline
+[IO.File]::WriteAllText($outPath, "pre hook executed via powershell runner`r`n")
