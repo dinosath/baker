@@ -398,6 +398,106 @@ fn log_dry_run_action<A: AsRef<Path>>(action: &str, target: A) {
     log::info!("[DRY RUN] {}: {}", action, target.as_ref().display());
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn base_args() -> Args {
+        Args {
+            template: "template".into(),
+            output_dir: PathBuf::from("output"),
+            force: false,
+            verbose: 0,
+            answers: None,
+            skip_confirms: Vec::new(),
+            non_interactive: false,
+            dry_run: false,
+        }
+    }
+
+    #[test]
+    fn skip_flags_respect_overwrite_and_hook_prompts() {
+        let mut args = base_args();
+        args.skip_confirms = vec![SkipConfirm::Overwrite];
+        let runner = Runner::new(args);
+        assert!(runner.should_skip_overwrite_prompts());
+        assert!(!runner.should_skip_hook_prompts());
+
+        let mut args = base_args();
+        args.skip_confirms = vec![SkipConfirm::Hooks];
+        let runner = Runner::new(args);
+        assert!(!runner.should_skip_overwrite_prompts());
+        assert!(runner.should_skip_hook_prompts());
+    }
+
+    #[test]
+    fn get_output_dir_errors_when_exists_without_force() {
+        let temp_dir = TempDir::new().unwrap();
+        let runner = Runner::new(base_args());
+        let result = runner.get_output_dir(temp_dir.path(), false, false);
+        match result {
+            Err(Error::OutputDirectoryExistsError { output_dir }) => {
+                assert!(output_dir.contains(temp_dir.path().to_str().unwrap()))
+            }
+            other => panic!("Expected OutputDirectoryExistsError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn get_output_dir_allows_existing_when_dry_run() {
+        let temp_dir = TempDir::new().unwrap();
+        let runner = Runner::new(base_args());
+        let result = runner.get_output_dir(temp_dir.path(), false, true).unwrap();
+        assert_eq!(result, temp_dir.path());
+    }
+
+    #[test]
+    fn build_templates_import_globset_matches_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut args = base_args();
+        args.template = temp_dir.path().to_string_lossy().into();
+        let runner = Runner::new(args);
+        let patterns = vec!["**/*.j2".to_string()];
+        let globset =
+            runner.build_templates_import_globset(temp_dir.path(), &patterns).unwrap();
+        let file_path = temp_dir.path().join("example.j2");
+        assert!(globset.is_match(&file_path));
+    }
+
+    #[test]
+    fn build_templates_import_globset_returns_none_when_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let runner = Runner::new(base_args());
+        let patterns: Vec<String> = Vec::new();
+        assert!(runner
+            .build_templates_import_globset(temp_dir.path(), &patterns)
+            .is_none());
+    }
+
+    #[test]
+    fn confirm_hook_execution_skips_prompt_when_flag_set() {
+        let temp_dir = TempDir::new().unwrap();
+        let hooks_dir = temp_dir.path().join("hooks");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("pre"), "echo pre").unwrap();
+        let runner = Runner::new(base_args());
+        let execute_hooks =
+            runner.confirm_hook_execution(temp_dir.path(), true, "pre", "post").unwrap();
+        assert!(execute_hooks);
+    }
+
+    #[test]
+    fn get_path_if_exists_returns_display_string() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("file.txt");
+        std::fs::write(&file_path, "content").unwrap();
+        let runner = Runner::new(base_args());
+        assert!(runner.get_path_if_exists(&file_path).contains("file.txt"));
+        assert!(runner.get_path_if_exists(temp_dir.path().join("missing")).is_empty());
+    }
+}
+
 /// Produces the user-facing completion string for the current run, accounting for dry-run mode.
 fn completion_message(dry_run: bool, output_root: &Path) -> String {
     if dry_run {

@@ -170,3 +170,65 @@ impl<'a> FileProcessor<'a> {
             || !target_exists
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::renderer::MiniJinjaRenderer;
+    use globset::GlobSetBuilder;
+    use indexmap::IndexMap;
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    fn build_file_processor(
+        skip_confirms: Vec<SkipConfirm>,
+    ) -> (TempDir, TempDir, FileProcessor<'static>) {
+        let template_root = TempDir::new().unwrap();
+        let output_root = TempDir::new().unwrap();
+        let engine = Box::leak(Box::new(MiniJinjaRenderer::new()));
+        let bakerignore = Box::leak(Box::new(GlobSetBuilder::new().build().unwrap()));
+
+        let mut context = GenerationContext::new(
+            template_root.path().to_path_buf(),
+            output_root.path().to_path_buf(),
+            crate::config::ConfigV1 {
+                template_suffix: ".baker.j2".into(),
+                loop_separator: "".into(),
+                loop_content_separator: "".into(),
+                template_globs: Vec::new(),
+                questions: IndexMap::new(),
+                post_hook_filename: "post".into(),
+                pre_hook_filename: "pre".into(),
+            },
+            skip_confirms,
+            false,
+        );
+        context.set_answers(json!({}));
+        let context = Box::leak(Box::new(context));
+        let processor = TemplateProcessor::new(&*engine, context, &*bakerignore);
+
+        (template_root, output_root, FileProcessor::new(processor, context))
+    }
+
+    #[test]
+    fn skips_overwrite_prompt_for_new_files() {
+        let (_template_root, _output_root, processor) = build_file_processor(Vec::new());
+        assert!(processor.should_skip_overwrite_prompt(false));
+        assert!(!processor.should_skip_overwrite_prompt(true));
+    }
+
+    #[test]
+    fn skips_overwrite_prompt_when_flagged() {
+        let (_template_root, _output_root, processor) =
+            build_file_processor(vec![SkipConfirm::Overwrite]);
+        assert!(processor.should_skip_overwrite_prompt(true));
+    }
+
+    #[test]
+    fn confirm_overwrite_short_circuits_when_skip_applies() {
+        let (_template_root, output_root, processor) = build_file_processor(Vec::new());
+        let target = output_root.path().join("new-file.txt");
+        let result = processor.confirm_overwrite(&target, false).unwrap();
+        assert!(result);
+    }
+}

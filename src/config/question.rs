@@ -249,4 +249,26 @@ mod tests {
 
         assert_eq!(rendered.default, json!({}));
     }
+
+    #[test]
+    fn renders_structured_yaml_default_from_string() {
+        let question = base_question(Type::Yaml, json!("enabled: true"));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("settings", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!({ "enabled": true }));
+    }
+
+    #[test]
+    fn boolean_defaults_are_rendered_from_value() {
+        let question = base_question(Type::Bool, json!(true));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("confirm", &answers, &renderer);
+
+        assert!(rendered.default.as_bool().unwrap());
+    }
 }

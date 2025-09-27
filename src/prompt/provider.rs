@@ -43,14 +43,30 @@ pub fn get_prompt_provider() -> impl PromptProvider {
 /// # Ok::<(), baker::error::Error>(())
 /// ```
 pub fn ask_question(question: &Question, default: &Value, help: String) -> Result<Value> {
-    let context = PromptContext::new(question, default, &help);
-    let provider = get_prompt_provider();
-    let prompt_handler = PromptHandler::new(provider);
-    prompt_handler.create_prompt(&context)
+    ask_question_with_provider(question, default, &help, get_prompt_provider())
 }
 
 /// Confirmation helper used for compatibility with legacy call sites.
 pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
+    confirm_with_provider(skip, prompt, get_prompt_provider())
+}
+
+fn ask_question_with_provider<'a, P: PromptProvider>(
+    question: &'a Question,
+    default: &'a Value,
+    help: &'a str,
+    provider: P,
+) -> Result<Value> {
+    let context = PromptContext::new(question, default, help);
+    let prompt_handler = PromptHandler::new(provider);
+    prompt_handler.create_prompt(&context)
+}
+
+fn confirm_with_provider<P: PromptProvider>(
+    skip: bool,
+    prompt: String,
+    provider: P,
+) -> Result<bool> {
     if skip {
         return Ok(true);
     }
@@ -69,7 +85,6 @@ pub fn confirm(skip: bool, prompt: String) -> Result<bool> {
 
     let default_value = Value::Bool(false);
     let context = PromptContext::new(&question, &default_value, &question.help);
-    let provider = get_prompt_provider();
     let prompt_handler = PromptHandler::new(provider);
     let result = prompt_handler.create_prompt(&context)?;
 
@@ -133,9 +148,59 @@ mod tests {
                     };
                     self.prompt_confirmation(&config).map(Value::Bool)
                 }
+                Type::Str => {
+                    let config = TextPromptConfig {
+                        prompt: context.help.to_string(),
+                        default: Some(context.default.to_string()),
+                        secret: None,
+                    };
+                    self.prompt_text(&config).map(Value::String)
+                }
                 _ => Ok(Value::Null),
             }
         }
+    }
+
+    #[test]
+    fn ask_question_uses_injected_provider() {
+        use crate::config::types::get_default_validation;
+        let provider = TestPromptProvider;
+        let question = Question {
+            help: "Test?".to_string(),
+            r#type: Type::Str,
+            default: Value::String("ignored".into()),
+            choices: vec![],
+            multiselect: false,
+            secret: None,
+            ask_if: String::new(),
+            schema: None,
+            validation: get_default_validation(),
+        };
+        let answer = super::ask_question_with_provider(
+            &question,
+            &Value::String("default".into()),
+            "Help text",
+            provider,
+        )
+        .unwrap();
+
+        assert_eq!(answer, Value::String("test".into()));
+    }
+
+    #[test]
+    fn confirm_returns_true_when_skipped() {
+        let result =
+            super::confirm_with_provider(true, "ignored".into(), TestPromptProvider)
+                .unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    fn confirm_uses_injected_provider() {
+        let result =
+            super::confirm_with_provider(false, "Proceed?".into(), TestPromptProvider)
+                .unwrap();
+        assert!(result);
     }
 
     #[test]
