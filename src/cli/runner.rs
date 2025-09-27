@@ -37,14 +37,14 @@ impl Runner {
 
         let hook_plan = self.prepare_hooks(&context, &engine)?;
 
-        let pre_hook_output = self.maybe_run_pre_hook(&hook_plan, &context)?;
+        let pre_hook_output = self.maybe_run_pre_hook(&hook_plan, &context, &engine)?;
 
         let answers = self.gather_answers(context.config(), &engine, pre_hook_output)?;
         context.set_answers(answers);
 
         self.process_templates(&context, &engine)?;
 
-        self.maybe_run_post_hook(&hook_plan, &context)?;
+        self.maybe_run_post_hook(&hook_plan, &context, &engine)?;
 
         self.finish(&context);
 
@@ -104,6 +104,8 @@ impl Runner {
             &json!({}),
             Some(&config.post_hook_filename),
         )?;
+        let pre_hook_runner = config.pre_hook_runner.clone();
+        let post_hook_runner = config.post_hook_runner.clone();
 
         let execute_hooks = self.confirm_hook_execution(
             context.template_root(),
@@ -118,13 +120,27 @@ impl Runner {
             &post_hook_filename,
         );
 
-        Ok(HookPlan { pre_hook_file, post_hook_file, execute_hooks })
+        log::debug!(
+            "Prepared hooks: pre={}, post={}, execute_hooks={}",
+            pre_hook_file.display(),
+            post_hook_file.display(),
+            execute_hooks
+        );
+
+        Ok(HookPlan {
+            pre_hook_file,
+            post_hook_file,
+            execute_hooks,
+            pre_hook_runner,
+            post_hook_runner,
+        })
     }
 
     fn maybe_run_pre_hook(
         &self,
         hook_plan: &HookPlan,
         context: &GenerationContext,
+        engine: &dyn TemplateRenderer,
     ) -> Result<Option<String>> {
         if !hook_plan.pre_hook_file.exists() {
             return Ok(None);
@@ -136,12 +152,18 @@ impl Runner {
         }
 
         if hook_plan.execute_hooks {
+            let runner = render_hook_runner(
+                engine,
+                &hook_plan.pre_hook_runner,
+                context.answers_opt(),
+            )?;
             log::debug!("Executing pre-hook: {}", hook_plan.pre_hook_file.display());
             run_hook(
                 context.template_root(),
                 context.output_root(),
                 &hook_plan.pre_hook_file,
                 None,
+                &runner,
             )
         } else {
             Ok(None)
@@ -177,6 +199,7 @@ impl Runner {
         &self,
         hook_plan: &HookPlan,
         context: &GenerationContext,
+        engine: &dyn TemplateRenderer,
     ) -> Result<()> {
         if !hook_plan.post_hook_file.exists() {
             return Ok(());
@@ -188,12 +211,18 @@ impl Runner {
         }
 
         if hook_plan.execute_hooks {
+            let runner = render_hook_runner(
+                engine,
+                &hook_plan.post_hook_runner,
+                context.answers_opt(),
+            )?;
             log::debug!("Executing post-hook: {}", hook_plan.post_hook_file.display());
             let post_hook_stdout = run_hook(
                 context.template_root(),
                 context.output_root(),
                 &hook_plan.post_hook_file,
                 Some(context.answers()),
+                &runner,
             )?;
 
             if let Some(result) = post_hook_stdout {
@@ -391,6 +420,21 @@ struct HookPlan {
     pre_hook_file: PathBuf,
     post_hook_file: PathBuf,
     execute_hooks: bool,
+    pre_hook_runner: Vec<String>,
+    post_hook_runner: Vec<String>,
+}
+
+fn render_hook_runner(
+    engine: &dyn TemplateRenderer,
+    runner_tokens: &[String],
+    answers: Option<&serde_json::Value>,
+) -> Result<Vec<String>> {
+    let empty_answers = serde_json::Value::Object(Default::default());
+    let answers_ref = answers.unwrap_or(&empty_answers);
+    runner_tokens
+        .iter()
+        .map(|token| engine.render(token, answers_ref, Some("hook_runner")))
+        .collect()
 }
 
 /// Emits a standardised dry-run log entry for the supplied action and filesystem target.
@@ -401,6 +445,7 @@ fn log_dry_run_action<A: AsRef<Path>>(action: &str, target: A) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::TempDir;
 
     fn base_args() -> Args {
@@ -495,6 +540,17 @@ mod tests {
         let runner = Runner::new(base_args());
         assert!(runner.get_path_if_exists(&file_path).contains("file.txt"));
         assert!(runner.get_path_if_exists(temp_dir.path().join("missing")).is_empty());
+    }
+
+    #[test]
+    fn render_hook_runner_renders_tokens_with_answers() {
+        let engine = crate::template::get_template_engine();
+        let tokens = vec!["python{{ version }}".to_string(), "-u".to_string()];
+        let answers = json!({ "version": "3" });
+
+        let result = render_hook_runner(&engine, &tokens, Some(&answers)).unwrap();
+
+        assert_eq!(result, vec!["python3".to_string(), "-u".to_string()]);
     }
 }
 

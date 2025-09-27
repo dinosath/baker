@@ -378,6 +378,8 @@ mod tests {
                 questions: IndexMap::new(),
                 post_hook_filename: "post".into(),
                 pre_hook_filename: "pre".into(),
+                post_hook_runner: Vec::new(),
+                pre_hook_runner: Vec::new(),
             },
             Vec::new(),
             false,
