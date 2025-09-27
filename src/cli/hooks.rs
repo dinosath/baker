@@ -98,10 +98,10 @@ pub fn run_hook<P: AsRef<Path>>(
     // Read stdout before waiting for the process to complete
     let stdout_output = match child.stdout.take() {
         Some(stdout) => {
-            let mut output = String::new();
             let mut reader = BufReader::new(stdout);
-            reader.read_to_string(&mut output)?;
-            Some(output)
+            let mut buffer = Vec::new();
+            reader.read_to_end(&mut buffer)?;
+            Some(String::from_utf8_lossy(&buffer).to_string())
         }
         None => None,
     };
