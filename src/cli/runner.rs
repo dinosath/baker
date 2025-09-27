@@ -37,14 +37,14 @@ impl Runner {
 
         let hook_plan = self.prepare_hooks(&context, &engine)?;
 
-        let pre_hook_output = self.maybe_run_pre_hook(&hook_plan, &context)?;
+        let pre_hook_output = self.maybe_run_pre_hook(&hook_plan, &context, &engine)?;
 
         let answers = self.gather_answers(context.config(), &engine, pre_hook_output)?;
         context.set_answers(answers);
 
         self.process_templates(&context, &engine)?;
 
-        self.maybe_run_post_hook(&hook_plan, &context)?;
+        self.maybe_run_post_hook(&hook_plan, &context, &engine)?;
 
         self.finish(&context);
 
@@ -104,10 +104,8 @@ impl Runner {
             &json!({}),
             Some(&config.post_hook_filename),
         )?;
-        let pre_hook_runner =
-            render_hook_runner(engine, &config.pre_hook_runner, context.answers_opt())?;
-        let post_hook_runner =
-            render_hook_runner(engine, &config.post_hook_runner, context.answers_opt())?;
+        let pre_hook_runner = config.pre_hook_runner.clone();
+        let post_hook_runner = config.post_hook_runner.clone();
 
         let execute_hooks = self.confirm_hook_execution(
             context.template_root(),
@@ -120,6 +118,13 @@ impl Runner {
             context.template_root(),
             &pre_hook_filename,
             &post_hook_filename,
+        );
+
+        log::debug!(
+            "Prepared hooks: pre={}, post={}, execute_hooks={}",
+            pre_hook_file.display(),
+            post_hook_file.display(),
+            execute_hooks
         );
 
         Ok(HookPlan {
@@ -135,6 +140,7 @@ impl Runner {
         &self,
         hook_plan: &HookPlan,
         context: &GenerationContext,
+        engine: &dyn TemplateRenderer,
     ) -> Result<Option<String>> {
         if !hook_plan.pre_hook_file.exists() {
             return Ok(None);
@@ -146,13 +152,18 @@ impl Runner {
         }
 
         if hook_plan.execute_hooks {
+            let runner = render_hook_runner(
+                engine,
+                &hook_plan.pre_hook_runner,
+                context.answers_opt(),
+            )?;
             log::debug!("Executing pre-hook: {}", hook_plan.pre_hook_file.display());
             run_hook(
                 context.template_root(),
                 context.output_root(),
                 &hook_plan.pre_hook_file,
                 None,
-                &hook_plan.pre_hook_runner,
+                &runner,
             )
         } else {
             Ok(None)
@@ -188,6 +199,7 @@ impl Runner {
         &self,
         hook_plan: &HookPlan,
         context: &GenerationContext,
+        engine: &dyn TemplateRenderer,
     ) -> Result<()> {
         if !hook_plan.post_hook_file.exists() {
             return Ok(());
@@ -199,13 +211,18 @@ impl Runner {
         }
 
         if hook_plan.execute_hooks {
+            let runner = render_hook_runner(
+                engine,
+                &hook_plan.post_hook_runner,
+                context.answers_opt(),
+            )?;
             log::debug!("Executing post-hook: {}", hook_plan.post_hook_file.display());
             let post_hook_stdout = run_hook(
                 context.template_root(),
                 context.output_root(),
                 &hook_plan.post_hook_file,
                 Some(context.answers()),
-                &hook_plan.post_hook_runner,
+                &runner,
             )?;
 
             if let Some(result) = post_hook_stdout {

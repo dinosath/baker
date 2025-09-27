@@ -54,6 +54,8 @@ pub fn run_hook<P: AsRef<Path>>(
         return Ok(None);
     }
 
+    log::debug!("Running hook {} via runner {:?}", hook_path.display(), runner);
+
     let mut command = if runner.is_empty() {
         Command::new(hook_path)
     } else {

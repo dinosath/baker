@@ -118,12 +118,32 @@ fn test_custom_hooks() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn test_hook_runner_unix() {
+    run_and_assert(
+        "tests/templates/hook_runner_unix",
+        "tests/expected/hook_runner_unix",
+        Some(r#"{"python_version": "3"}"#),
+    );
+}
+
+#[test]
 #[cfg(target_os = "macos")]
 fn test_platform_variables() {
     run_and_assert(
         "tests/templates/platform_variables",
         "tests/expected/platform_variables",
         Some(r#"{"project_name": "cross-platform-app"}"#),
+    );
+}
+
+#[test]
+#[cfg(target_os = "windows")]
+fn test_hook_runner_windows() {
+    run_and_assert(
+        "tests/templates/hook_runner_windows",
+        "tests/expected/hook_runner_windows",
+        None,
     );
 }
 

@@ -1,0 +1,14 @@
+schemaVersion: v1
+
+questions:
+  python_version:
+    type: str
+    help: Which Python version should run hooks?
+    default: "3"
+
+pre_hook_filename: pre.py
+pre_hook_runner:
+  - python3
+post_hook_filename: post.py
+post_hook_runner:
+  - python{{ python_version }}

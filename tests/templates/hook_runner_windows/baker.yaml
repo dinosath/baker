@@ -1,0 +1,18 @@
+schemaVersion: v1
+
+pre_hook_filename: pre.ps1
+pre_hook_runner:
+  - powershell
+  - -NoLogo
+  - -NonInteractive
+  - -ExecutionPolicy
+  - Bypass
+  - -File
+post_hook_filename: post.ps1
+post_hook_runner:
+  - powershell
+  - -NoLogo
+  - -NonInteractive
+  - -ExecutionPolicy
+  - Bypass
+  - -File
