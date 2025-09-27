@@ -594,13 +594,13 @@ each hook. Runners are defined as arrays of strings (similar to Docker's
 `ENTRYPOINT` syntax), allowing you to include the command and its arguments.
 
 ```yaml
-pre_hook_filename: hooks/pre.ps1
+pre_hook_filename: pre.ps1
 pre_hook_runner:
   - powershell
   - -NoLogo
   - -File
 
-post_hook_filename: hooks/post.py
+post_hook_filename: post.py
 post_hook_runner:
   - python3
   - -u
