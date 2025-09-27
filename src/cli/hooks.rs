@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::borrow::Cow;
 use std::io::{BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -101,7 +102,14 @@ pub fn run_hook<P: AsRef<Path>>(
             let mut reader = BufReader::new(stdout);
             let mut buffer = Vec::new();
             reader.read_to_end(&mut buffer)?;
-            Some(String::from_utf8_lossy(&buffer).to_string())
+            let decoded = String::from_utf8_lossy(&buffer);
+            if matches!(decoded, Cow::Owned(_)) {
+                log::warn!(
+                    "Hook {} emitted non-UTF8 stdout; performing lossy conversion",
+                    hook_path.display()
+                );
+            }
+            Some(decoded.into_owned())
         }
         None => None,
     };
