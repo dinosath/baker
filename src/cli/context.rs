@@ -49,4 +49,8 @@ impl GenerationContext {
     pub fn answers(&self) -> &serde_json::Value {
         self.answers.as_ref().expect("generation answers requested before initialization")
     }
+
+    pub fn answers_opt(&self) -> Option<&serde_json::Value> {
+        self.answers.as_ref()
+    }
 }

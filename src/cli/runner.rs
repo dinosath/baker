@@ -104,8 +104,10 @@ impl Runner {
             &json!({}),
             Some(&config.post_hook_filename),
         )?;
-        let pre_hook_runner = render_hook_runner(engine, &config.pre_hook_runner)?;
-        let post_hook_runner = render_hook_runner(engine, &config.post_hook_runner)?;
+        let pre_hook_runner =
+            render_hook_runner(engine, &config.pre_hook_runner, context.answers_opt())?;
+        let post_hook_runner =
+            render_hook_runner(engine, &config.post_hook_runner, context.answers_opt())?;
 
         let execute_hooks = self.confirm_hook_execution(
             context.template_root(),
@@ -408,10 +410,13 @@ struct HookPlan {
 fn render_hook_runner(
     engine: &dyn TemplateRenderer,
     runner_tokens: &[String],
+    answers: Option<&serde_json::Value>,
 ) -> Result<Vec<String>> {
+    let empty_answers = serde_json::Value::Object(Default::default());
+    let answers_ref = answers.unwrap_or(&empty_answers);
     runner_tokens
         .iter()
-        .map(|token| engine.render(token, &json!({}), Some("hook_runner")))
+        .map(|token| engine.render(token, answers_ref, Some("hook_runner")))
         .collect()
 }
 
@@ -423,6 +428,7 @@ fn log_dry_run_action<A: AsRef<Path>>(action: &str, target: A) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::TempDir;
 
     fn base_args() -> Args {
@@ -517,6 +523,17 @@ mod tests {
         let runner = Runner::new(base_args());
         assert!(runner.get_path_if_exists(&file_path).contains("file.txt"));
         assert!(runner.get_path_if_exists(temp_dir.path().join("missing")).is_empty());
+    }
+
+    #[test]
+    fn render_hook_runner_renders_tokens_with_answers() {
+        let engine = crate::template::get_template_engine();
+        let tokens = vec!["python{{ version }}".to_string(), "-u".to_string()];
+        let answers = json!({ "version": "3" });
+
+        let result = render_hook_runner(&engine, &tokens, Some(&answers)).unwrap();
+
+        assert_eq!(result, vec!["python3".to_string(), "-u".to_string()]);
     }
 }
 
