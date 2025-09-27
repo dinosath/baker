@@ -23,6 +23,7 @@
   - [Debugging Templates](#debugging-templates)
 - [Hooks](#hooks)
   - [Customizing Hook Filenames](#customizing-hook-filenames)
+  - [Customizing Hook Runners](#customizing-hook-runners)
   - [Available Platform Variables](#available-platform-variables)
 - [Questions](#questions)
   - [Single-Input](#single-input)
@@ -585,6 +586,36 @@ hooks/
 ```
 
 Baker will automatically select the appropriate hook based on the current platform.
+
+### Customizing Hook Runners
+
+You can declare how Baker should execute hook scripts by specifying a runner for
+each hook. Runners are defined as arrays of strings (similar to Docker's
+`ENTRYPOINT` syntax), allowing you to include the command and its arguments.
+
+```yaml
+pre_hook_filename: hooks/pre.ps1
+pre_hook_runner:
+  - powershell
+  - -NoLogo
+  - -File
+
+post_hook_filename: hooks/post.py
+post_hook_runner:
+  - python3
+  - -u
+```
+
+- If a runner is provided, Baker runs the hook using the supplied command and
+  passes the rendered hook path as the final argument.
+- If omitted (default), Baker executes the hook path directly, matching the
+  existing behaviour on Unix systems with executable scripts.
+- Runner tokens are rendered through the template engine, so you can use
+  variables from `baker.yaml` if needed.
+
+This feature is especially helpful on Windows where scripts such as `.ps1`
+cannot be launched directly, and on Unix when you want to force a specific
+interpreter (e.g., Python, Node.js, Bash).
 
 ### Available Platform Variables
 

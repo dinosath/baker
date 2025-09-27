@@ -116,3 +116,62 @@ pub fn run_hook<P: AsRef<Path>>(
 
     Ok(stdout_output)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::{self, File};
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[cfg(unix)]
+    #[test]
+    fn executes_script_via_runner_on_unix() {
+        let temp_dir = TempDir::new().unwrap();
+        let script_path = temp_dir.path().join("hook.sh");
+        File::create(&script_path).unwrap().write_all(b"echo unix_runner").unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let output = run_hook(
+            temp_dir.path(),
+            temp_dir.path(),
+            &script_path,
+            None,
+            &["sh".to_string()],
+        )
+        .expect("hook execution")
+        .expect("stdout");
+
+        assert!(output.contains("unix_runner"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn executes_script_via_powershell_runner_on_windows() {
+        let temp_dir = TempDir::new().unwrap();
+        let script_path = temp_dir.path().join("hook.ps1");
+        File::create(&script_path)
+            .unwrap()
+            .write_all(b"Write-Output 'windows_runner'")
+            .unwrap();
+
+        let runner = vec![
+            "powershell".to_string(),
+            "-NoLogo".to_string(),
+            "-NonInteractive".to_string(),
+            "-ExecutionPolicy".to_string(),
+            "Bypass".to_string(),
+            "-File".to_string(),
+        ];
+
+        let output =
+            run_hook(temp_dir.path(), temp_dir.path(), &script_path, None, &runner)
+                .expect("hook execution")
+                .expect("stdout");
+
+        assert!(output.contains("windows_runner"));
+    }
+}
