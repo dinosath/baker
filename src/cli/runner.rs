@@ -150,6 +150,7 @@ impl Runner {
                 context.output_root(),
                 &hook_plan.pre_hook_file,
                 None,
+                &hook_plan.pre_hook_runner,
             )
         } else {
             Ok(None)
@@ -202,6 +203,7 @@ impl Runner {
                 context.output_root(),
                 &hook_plan.post_hook_file,
                 Some(context.answers()),
+                &hook_plan.post_hook_runner,
             )?;
 
             if let Some(result) = post_hook_stdout {

@@ -38,6 +38,7 @@ pub fn run_hook<P: AsRef<Path>>(
     output_dir: P,
     hook_path: P,
     answers: Option<&serde_json::Value>,
+    runner: &[String],
 ) -> Result<Option<String>> {
     let hook_path = hook_path.as_ref();
 
@@ -53,7 +54,18 @@ pub fn run_hook<P: AsRef<Path>>(
         return Ok(None);
     }
 
-    let mut child = Command::new(hook_path)
+    let mut command = if runner.is_empty() {
+        Command::new(hook_path)
+    } else {
+        let mut cmd = Command::new(&runner[0]);
+        if runner.len() > 1 {
+            cmd.args(&runner[1..]);
+        }
+        cmd.arg(hook_path);
+        cmd
+    };
+
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
