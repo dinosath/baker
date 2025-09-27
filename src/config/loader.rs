@@ -28,6 +28,10 @@ pub struct ConfigV1 {
     pub post_hook_filename: String,
     #[serde(default = "get_default_pre_hook_filename")]
     pub pre_hook_filename: String,
+    #[serde(default = "get_default_post_hook_runner")]
+    pub post_hook_runner: Vec<String>,
+    #[serde(default = "get_default_pre_hook_runner")]
+    pub pre_hook_runner: Vec<String>,
 }
 
 impl ConfigV1 {
@@ -86,6 +90,10 @@ fn get_default_template_globs() -> Vec<String> {
     Vec::new()
 }
 
+fn get_default_post_hook_runner() -> Vec<String> {
+    Vec::new()
+}
+
 fn get_default_post_hook_filename() -> String {
     DEFAULT_POST_HOOK.to_string()
 }
@@ -94,10 +102,56 @@ fn get_default_pre_hook_filename() -> String {
     DEFAULT_PRE_HOOK.to_string()
 }
 
+fn get_default_pre_hook_runner() -> Vec<String> {
+    Vec::new()
+}
+
 fn get_default_loop_separator() -> String {
     DEFAULT_LOOP_SEPARATOR.to_string()
 }
 
 fn get_default_loop_content_separator() -> String {
     DEFAULT_LOOP_CONTENT_SEPARATOR.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runners_default_to_empty_arrays() {
+        let raw = r#"
+schemaVersion: v1
+pre_hook_filename: hooks/pre.sh
+post_hook_filename: hooks/post.sh
+questions: {}
+"#;
+
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+
+        assert!(cfg.pre_hook_runner.is_empty());
+        assert!(cfg.post_hook_runner.is_empty());
+    }
+
+    #[test]
+    fn runners_parse_array_arguments() {
+        let raw = r#"
+schemaVersion: v1
+pre_hook_filename: hooks/pre.ps1
+pre_hook_runner: ["powershell", "-File"]
+post_hook_filename: hooks/post.py
+post_hook_runner: ["python3", "-u"]
+questions: {}
+"#;
+
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+
+        assert_eq!(
+            cfg.pre_hook_runner,
+            vec!["powershell".to_string(), "-File".to_string()]
+        );
+        assert_eq!(cfg.post_hook_runner, vec!["python3".to_string(), "-u".to_string()]);
+    }
 }
