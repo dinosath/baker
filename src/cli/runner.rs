@@ -1,8 +1,7 @@
-use crate::template::processor::TemplateConfig;
 use crate::{
     cli::{
-        answers::AnswerCollector, hooks::run_hook, processor::FileProcessor, Args,
-        SkipConfirm,
+        answers::AnswerCollector, context::GenerationContext, hooks::run_hook,
+        processor::FileProcessor, Args, SkipConfirm,
     },
     config::{Config, ConfigV1},
     error::{Error, Result},
@@ -34,66 +33,48 @@ impl Runner {
     /// Executes the complete template generation workflow
     pub fn run(self) -> Result<()> {
         let mut engine = get_template_engine();
+        let mut context = self.prepare_environment(&mut engine)?;
 
-        let output_root = self.get_output_dir(
-            &self.args.output_dir,
-            self.args.force,
-            self.args.dry_run,
-        )?;
+        let hook_plan = self.prepare_hooks(&context, &engine)?;
 
-        let template_root = get_template(
-            self.args.template.as_str(),
-            self.should_skip_overwrite_prompts(),
-        )?;
+        let pre_hook_output = self.maybe_run_pre_hook(&hook_plan, &context)?;
 
-        let config = self.load_and_validate_config(&template_root)?;
+        let answers = self.gather_answers(context.config(), &engine, pre_hook_output)?;
+        context.set_answers(answers);
 
-        self.add_templates_in_renderer(&template_root, &config, &mut engine);
+        self.process_templates(&context, &engine)?;
 
-        let (pre_hook_file, post_hook_file, execute_hooks) =
-            self.setup_hooks(&template_root, &config, &engine)?;
+        self.maybe_run_post_hook(&hook_plan, &context)?;
 
-        // Execute pre-generation hook
-        let pre_hook_output = self.execute_pre_hook(
-            &template_root,
-            &output_root,
-            &pre_hook_file,
-            execute_hooks && !self.args.dry_run,
-        )?;
+        self.finish(&context);
 
-        // Collect answers from all sources
-        let answers = self.collect_answers(&config, &engine, pre_hook_output)?;
-
-        // Process template files
-        self.process_template_files(
-            &template_root,
-            &output_root,
-            &config,
-            &engine,
-            &answers,
-        )?;
-
-        // Execute post-generation hook
-        self.execute_post_hook(
-            &template_root,
-            &output_root,
-            &post_hook_file,
-            &answers,
-            execute_hooks && !self.args.dry_run,
-        )?;
-
-        if self.args.dry_run {
-            println!(
-                "[DRY RUN] Template processing completed. No files were actually created in {}.",
-                output_root.display()
-            );
-        } else {
-            println!(
-                "Template generation completed successfully in {}.",
-                output_root.display()
-            );
-        }
         Ok(())
+    }
+
+    fn prepare_environment(
+        &self,
+        engine: &mut dyn TemplateRenderer,
+    ) -> Result<GenerationContext> {
+        let output_root = self.prepare_output_dir()?;
+        let template_root = self.resolve_template()?;
+        let config = self.load_and_validate_config(&template_root)?;
+        self.add_templates_in_renderer(&template_root, &config, engine);
+
+        Ok(GenerationContext::new(
+            template_root,
+            output_root,
+            config,
+            self.args.skip_confirms.clone(),
+            self.args.dry_run,
+        ))
+    }
+
+    fn prepare_output_dir(&self) -> Result<PathBuf> {
+        self.get_output_dir(&self.args.output_dir, self.args.force, self.args.dry_run)
+    }
+
+    fn resolve_template(&self) -> Result<PathBuf> {
+        get_template(self.args.template.as_str(), self.should_skip_overwrite_prompts())
     }
 
     /// Loads and validates the template configuration
@@ -107,13 +88,12 @@ impl Runner {
         Ok(config)
     }
 
-    /// Sets up pre and post hook files
-    fn setup_hooks(
+    fn prepare_hooks(
         &self,
-        template_root: &PathBuf,
-        config: &crate::config::ConfigV1,
+        context: &GenerationContext,
         engine: &dyn crate::renderer::TemplateRenderer,
-    ) -> Result<(PathBuf, PathBuf, bool)> {
+    ) -> Result<HookPlan> {
+        let config = context.config();
         let pre_hook_filename = engine.render(
             &config.pre_hook_filename,
             &json!({}),
@@ -126,46 +106,50 @@ impl Runner {
         )?;
 
         let execute_hooks = self.confirm_hook_execution(
-            template_root,
+            context.template_root(),
             self.should_skip_hook_prompts(),
             &pre_hook_filename,
             &post_hook_filename,
         )?;
 
-        let (pre_hook_file, post_hook_file) =
-            self.get_hook_files(template_root, &pre_hook_filename, &post_hook_filename);
+        let (pre_hook_file, post_hook_file) = self.get_hook_files(
+            context.template_root(),
+            &pre_hook_filename,
+            &post_hook_filename,
+        );
 
-        Ok((pre_hook_file, post_hook_file, execute_hooks))
+        Ok(HookPlan { pre_hook_file, post_hook_file, execute_hooks })
     }
 
-    /// Executes the pre-generation hook if it exists
-    fn execute_pre_hook(
+    fn maybe_run_pre_hook(
         &self,
-        template_root: &PathBuf,
-        output_root: &PathBuf,
-        pre_hook_file: &PathBuf,
-        execute_hooks: bool,
+        hook_plan: &HookPlan,
+        context: &GenerationContext,
     ) -> Result<Option<String>> {
-        if pre_hook_file.exists() {
-            if self.args.dry_run {
-                log::info!(
-                    "[DRY RUN] Would execute pre-hook: {}",
-                    pre_hook_file.display()
-                );
-                Ok(None)
-            } else if execute_hooks {
-                log::debug!("Executing pre-hook: {}", pre_hook_file.display());
-                run_hook(template_root, output_root, pre_hook_file, None)
-            } else {
-                Ok(None)
-            }
+        if !hook_plan.pre_hook_file.exists() {
+            return Ok(None);
+        }
+
+        if context.dry_run() {
+            log_dry_run_action("Would execute pre-hook", &hook_plan.pre_hook_file);
+            return Ok(None);
+        }
+
+        if hook_plan.execute_hooks {
+            log::debug!("Executing pre-hook: {}", hook_plan.pre_hook_file.display());
+            run_hook(
+                context.template_root(),
+                context.output_root(),
+                &hook_plan.pre_hook_file,
+                None,
+            )
         } else {
             Ok(None)
         }
     }
 
     /// Collects answers from all available sources
-    fn collect_answers(
+    fn gather_answers(
         &self,
         config: &crate::config::ConfigV1,
         engine: &dyn crate::renderer::TemplateRenderer,
@@ -176,60 +160,51 @@ impl Runner {
     }
 
     /// Processes all template files
-    fn process_template_files(
+    fn process_templates(
         &self,
-        template_root: &PathBuf,
-        output_root: &Path,
-        config: &crate::config::ConfigV1,
+        context: &GenerationContext,
         engine: &dyn crate::renderer::TemplateRenderer,
-        answers: &serde_json::Value,
     ) -> Result<()> {
-        let bakerignore = parse_bakerignore_file(template_root)?;
+        let bakerignore = parse_bakerignore_file(context.template_root())?;
 
-        let processor = TemplateProcessor::new(
-            engine,
-            template_root.clone(),
-            output_root.to_path_buf(),
-            answers,
-            &bakerignore,
-            TemplateConfig {
-                template_suffix: config.template_suffix.as_str(),
-                loop_separator: config.loop_separator.as_str(),
-                loop_content_separator: config.loop_content_separator.as_str(),
-            },
-        );
+        let processor = TemplateProcessor::new(engine, context, &bakerignore);
 
-        let file_processor =
-            FileProcessor::new(processor, &self.args.skip_confirms, self.args.dry_run);
-        file_processor.process_all_files(template_root)
+        let file_processor = FileProcessor::new(processor, context);
+        file_processor.process_all_files()
     }
 
-    /// Executes the post-generation hook if it exists
-    fn execute_post_hook(
+    fn maybe_run_post_hook(
         &self,
-        template_root: &PathBuf,
-        output_root: &PathBuf,
-        post_hook_file: &PathBuf,
-        answers: &serde_json::Value,
-        execute_hooks: bool,
+        hook_plan: &HookPlan,
+        context: &GenerationContext,
     ) -> Result<()> {
-        if post_hook_file.exists() {
-            if self.args.dry_run {
-                log::info!(
-                    "[DRY RUN] Would execute post-hook: {}",
-                    post_hook_file.display()
-                );
-            } else if execute_hooks {
-                log::debug!("Executing post-hook: {}", post_hook_file.display());
-                let post_hook_stdout =
-                    run_hook(template_root, output_root, post_hook_file, Some(answers))?;
+        if !hook_plan.post_hook_file.exists() {
+            return Ok(());
+        }
 
-                if let Some(result) = post_hook_stdout {
-                    log::debug!("Post-hook stdout content: {result}");
-                }
+        if context.dry_run() {
+            log_dry_run_action("Would execute post-hook", &hook_plan.post_hook_file);
+            return Ok(());
+        }
+
+        if hook_plan.execute_hooks {
+            log::debug!("Executing post-hook: {}", hook_plan.post_hook_file.display());
+            let post_hook_stdout = run_hook(
+                context.template_root(),
+                context.output_root(),
+                &hook_plan.post_hook_file,
+                Some(context.answers()),
+            )?;
+
+            if let Some(result) = post_hook_stdout {
+                log::debug!("Post-hook stdout content: {result}");
             }
         }
         Ok(())
+    }
+
+    fn finish(&self, context: &GenerationContext) {
+        println!("{}", completion_message(context.dry_run(), context.output_root()));
     }
 
     /// Determines if overwrite prompts should be skipped
@@ -258,7 +233,7 @@ impl Runner {
             });
         }
         if dry_run {
-            log::info!("[DRY RUN] Would use output directory: {}", output_dir.display());
+            log_dry_run_action("Would use output directory", output_dir);
         }
         Ok(output_dir.to_path_buf())
     }
@@ -409,6 +384,132 @@ impl Runner {
         } else {
             String::new()
         }
+    }
+}
+
+struct HookPlan {
+    pre_hook_file: PathBuf,
+    post_hook_file: PathBuf,
+    execute_hooks: bool,
+}
+
+/// Emits a standardised dry-run log entry for the supplied action and filesystem target.
+fn log_dry_run_action<A: AsRef<Path>>(action: &str, target: A) {
+    log::info!("[DRY RUN] {}: {}", action, target.as_ref().display());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn base_args() -> Args {
+        Args {
+            template: "template".into(),
+            output_dir: PathBuf::from("output"),
+            force: false,
+            verbose: 0,
+            answers: None,
+            skip_confirms: Vec::new(),
+            non_interactive: false,
+            dry_run: false,
+        }
+    }
+
+    #[test]
+    fn skip_flags_respect_overwrite_and_hook_prompts() {
+        let mut args = base_args();
+        args.skip_confirms = vec![SkipConfirm::Overwrite];
+        let runner = Runner::new(args);
+        assert!(runner.should_skip_overwrite_prompts());
+        assert!(!runner.should_skip_hook_prompts());
+
+        let mut args = base_args();
+        args.skip_confirms = vec![SkipConfirm::Hooks];
+        let runner = Runner::new(args);
+        assert!(!runner.should_skip_overwrite_prompts());
+        assert!(runner.should_skip_hook_prompts());
+    }
+
+    #[test]
+    fn get_output_dir_errors_when_exists_without_force() {
+        let temp_dir = TempDir::new().unwrap();
+        let runner = Runner::new(base_args());
+        let result = runner.get_output_dir(temp_dir.path(), false, false);
+        match result {
+            Err(Error::OutputDirectoryExistsError { output_dir }) => {
+                assert!(output_dir.contains(temp_dir.path().to_str().unwrap()))
+            }
+            other => panic!("Expected OutputDirectoryExistsError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn get_output_dir_allows_existing_when_dry_run() {
+        let temp_dir = TempDir::new().unwrap();
+        let runner = Runner::new(base_args());
+        let result = runner.get_output_dir(temp_dir.path(), false, true).unwrap();
+        assert_eq!(result, temp_dir.path());
+    }
+
+    #[test]
+    fn build_templates_import_globset_matches_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut args = base_args();
+        args.template = temp_dir.path().to_string_lossy().into();
+        let runner = Runner::new(args);
+        let patterns = vec!["**/*.j2".to_string()];
+        let globset =
+            runner.build_templates_import_globset(temp_dir.path(), &patterns).unwrap();
+        let file_path = temp_dir.path().join("example.j2");
+        assert!(globset.is_match(&file_path));
+    }
+
+    #[test]
+    fn build_templates_import_globset_returns_none_when_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let runner = Runner::new(base_args());
+        let patterns: Vec<String> = Vec::new();
+        assert!(runner
+            .build_templates_import_globset(temp_dir.path(), &patterns)
+            .is_none());
+    }
+
+    #[test]
+    fn confirm_hook_execution_skips_prompt_when_flag_set() {
+        let temp_dir = TempDir::new().unwrap();
+        let hooks_dir = temp_dir.path().join("hooks");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("pre"), "echo pre").unwrap();
+        let runner = Runner::new(base_args());
+        let execute_hooks =
+            runner.confirm_hook_execution(temp_dir.path(), true, "pre", "post").unwrap();
+        assert!(execute_hooks);
+    }
+
+    #[test]
+    fn get_path_if_exists_returns_display_string() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("file.txt");
+        std::fs::write(&file_path, "content").unwrap();
+        let runner = Runner::new(base_args());
+        assert!(runner.get_path_if_exists(&file_path).contains("file.txt"));
+        assert!(runner.get_path_if_exists(temp_dir.path().join("missing")).is_empty());
+    }
+}
+
+/// Produces the user-facing completion string for the current run, accounting for dry-run mode.
+fn completion_message(dry_run: bool, output_root: &Path) -> String {
+    if dry_run {
+        format!(
+            "[DRY RUN] Template processing completed. No files were actually created in {}.",
+            output_root.display()
+        )
+    } else {
+        format!(
+            "Template generation completed successfully in {}.",
+            output_root.display()
+        )
     }
 }
 

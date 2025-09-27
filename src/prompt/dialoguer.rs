@@ -11,7 +11,7 @@ use crate::{error::Result, prompt::parser::DataParser};
 use dialoguer::{Confirm, Editor, Input, MultiSelect, Password, Select};
 use serde_json::Value;
 
-/// Dialoguer-based implementation of all prompt interfaces
+/// Default terminal-backed prompt provider implemented with `dialoguer`.
 pub struct DialoguerPrompter;
 
 impl DialoguerPrompter {

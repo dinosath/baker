@@ -1,11 +1,12 @@
 use crate::{
+    cli::context::GenerationContext,
     error::{Error, Result},
     ext::PathExt,
     renderer::TemplateRenderer,
     template::operation::{TemplateOperation, TemplateOperation::MultipleWrite, WriteOp},
 };
 use globset::GlobSet;
-use log::{debug, error};
+use log::debug;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,6 +21,8 @@ pub struct TemplateProcessor<'a, P: AsRef<Path>> {
     output_root: P,
     answers: &'a serde_json::Value,
     template_config: TemplateConfig<'a>,
+    loop_detector: Regex,
+    loop_end_regex: Regex,
 }
 
 pub struct TemplateConfig<'a> {
@@ -28,18 +31,35 @@ pub struct TemplateConfig<'a> {
     pub loop_content_separator: &'a str,
 }
 
-impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
+impl<'a> TemplateProcessor<'a, PathBuf> {
     pub fn new(
         engine: &'a dyn TemplateRenderer,
-        template_root: P,
-        output_root: P,
-        answers: &'a serde_json::Value,
+        context: &'a GenerationContext,
         bakerignore: &'a GlobSet,
-        template_config: TemplateConfig<'a>,
     ) -> Self {
-        Self { engine, template_root, output_root, answers, bakerignore, template_config }
-    }
+        let config = context.config();
+        let template_config = TemplateConfig {
+            template_suffix: config.template_suffix.as_str(),
+            loop_separator: config.loop_separator.as_str(),
+            loop_content_separator: config.loop_content_separator.as_str(),
+        };
 
+        Self {
+            engine,
+            bakerignore,
+            template_root: context.template_root().clone(),
+            output_root: context.output_root().clone(),
+            answers: context.answers(),
+            template_config,
+            loop_detector: Regex::new(r"\{\%\s*for\s+.*in.*\%\}")
+                .expect("valid for-loop regex"),
+            loop_end_regex: Regex::new(r"(\{\%\s*endfor\s*\%\})")
+                .expect("valid endfor regex"),
+        }
+    }
+}
+
+impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// Validates whether the `rendered_entry` is properly rendered by comparing its components
     /// with those of the original `template_entry`. The validation ensures no parts of the path
     /// are empty after rendering.
@@ -61,7 +81,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     /// - Template path: `template_root/{% if create_tests %}tests{% endif %}/`
     /// - Rendered path (when create_tests=false): `template_root//` (contains empty part)
     ///
-    fn has_valid_rendered_path_parts<S: AsRef<str>>(
+    fn rendered_path_has_valid_parts<S: AsRef<str>>(
         &self,
         template_path: S,
         rendered_path: S,
@@ -113,7 +133,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     fn render_template_entry(&self, template_entry: &Path) -> Result<PathBuf> {
         let rendered_entry = self.engine.render_path(template_entry, self.answers)?;
 
-        if !self.has_valid_rendered_path_parts(
+        if !self.rendered_path_has_valid_parts(
             template_entry.to_str_checked()?,
             &rendered_entry,
         ) {
@@ -167,16 +187,9 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     }
 
     /// Returns true if the path contains any MiniJinja for-loop block delimiters anywhere in the path (not just filename).
-    pub fn is_template_with_loop(&self, template_entry: PathBuf) -> bool {
-        let re = Regex::new(r"\{\%\s*for\s+.*in.*\%\}");
-        let path_str = template_entry.to_string_lossy();
-        match re {
-            Ok(regex) => regex.is_match(&path_str),
-            Err(e) => {
-                error!("Regex error when checking if for loop exists in template filename: {}", e);
-                false
-            }
-        }
+    pub fn is_template_with_loop<T: AsRef<Path>>(&self, template_entry: T) -> bool {
+        let path_str = template_entry.as_ref().to_string_lossy();
+        self.loop_detector.is_match(&path_str)
     }
 
     /// Processes a template entry and determines the appropriate operation.
@@ -205,7 +218,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 let template_content = fs::read_to_string(&template_entry)?;
                 let template_name =
                     template_entry.file_name().and_then(|name| name.to_str());
-                if self.is_template_with_loop(template_entry.clone()) {
+                if self.is_template_with_loop(&template_entry) {
                     debug!("found loop template file: {}", template_entry.display());
                     return self
                         .render_loop_template_file(&template_entry, template_name);
@@ -258,39 +271,19 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         let rendered_parent_dir =
             self.render_template_entry(template_parent_dir.as_path())?;
         let raw_template_content = fs::read_to_string(template_entry)?;
-        let endfor_regex = Regex::new(r"(\{\%\s*endfor\s*\%\})").unwrap();
-        let injected_content = format!(
-            "{}{}{}$1",
-            self.template_config.loop_content_separator,
-            raw_template_content,
-            self.template_config.loop_separator
-        );
         let template_with_injected_content =
-            endfor_regex.replace_all(template_entry.to_str().unwrap(), injected_content);
+            self.inject_loop_content(template_entry, &raw_template_content)?;
         let rendered_content = self.engine.render(
             &template_with_injected_content,
             self.answers,
             template_name,
         )?;
         debug!("rendered content: {rendered_content}");
-        let file_content_pairs = self.split_content(&rendered_content);
-        let write_operations = file_content_pairs
-            .into_iter()
-            .map(|(rendered_filename, content)| {
-                let mut output_file_path = PathBuf::from(&rendered_filename);
-                if !output_file_path.starts_with(rendered_parent_dir.as_path()) {
-                    output_file_path = rendered_parent_dir.join(&rendered_filename);
-                }
-                let final_output_path =
-                    self.get_target_path(&output_file_path, template_entry)?;
-                let target_exists = final_output_path.exists();
-                Ok(WriteOp {
-                    target: self.remove_template_suffix(&final_output_path)?,
-                    content,
-                    target_exists,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let write_operations = self.collect_loop_write_ops(
+            &rendered_content,
+            rendered_parent_dir.as_path(),
+            template_entry,
+        )?;
         Ok(MultipleWrite { writes: write_operations })
     }
 
@@ -310,14 +303,58 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             })
             .collect()
     }
+
+    fn inject_loop_content(
+        &self,
+        template_entry: &Path,
+        raw_template_content: &str,
+    ) -> Result<String> {
+        let injected_content = format!(
+            "{}{}{}$1",
+            self.template_config.loop_content_separator,
+            raw_template_content,
+            self.template_config.loop_separator
+        );
+        let template_str = template_entry.to_str_checked()?;
+        Ok(self.loop_end_regex.replace_all(template_str, injected_content).into_owned())
+    }
+
+    fn collect_loop_write_ops(
+        &self,
+        rendered_content: &str,
+        rendered_parent_dir: &Path,
+        template_entry: &Path,
+    ) -> Result<Vec<WriteOp>> {
+        self.split_content(rendered_content)
+            .into_iter()
+            .map(|(rendered_filename, content)| {
+                let mut output_file_path = PathBuf::from(&rendered_filename);
+                if !output_file_path.starts_with(rendered_parent_dir) {
+                    output_file_path = rendered_parent_dir.join(&rendered_filename);
+                }
+                let final_output_path =
+                    self.get_target_path(&output_file_path, template_entry)?;
+                let target_exists = final_output_path.exists();
+                Ok(WriteOp {
+                    target: self.remove_template_suffix(&final_output_path)?,
+                    content,
+                    target_exists,
+                })
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{renderer::MiniJinjaRenderer, template::operation::TemplateOperation};
+    use crate::{
+        cli::context::GenerationContext, config::ConfigV1, renderer::MiniJinjaRenderer,
+        template::operation::TemplateOperation,
+    };
     use fs::File;
     use globset::GlobSetBuilder;
+    use indexmap::IndexMap;
     use serde_json::json;
     use std::io::Write;
     use tempfile::TempDir;
@@ -329,18 +366,29 @@ mod tests {
         let output_root = TempDir::new().unwrap();
         let engine = Box::new(MiniJinjaRenderer::new());
         let bakerignore = GlobSetBuilder::new().build().unwrap();
-        let answers = Box::new(answers);
-        let processor = TemplateProcessor::new(
-            Box::leak(engine),
+
+        let mut context = GenerationContext::new(
             template_root.path().to_path_buf(),
             output_root.path().to_path_buf(),
-            &*Box::leak(answers),
-            &*Box::leak(Box::new(bakerignore)),
-            TemplateConfig {
-                template_suffix: ".baker.j2",
-                loop_separator: "",
-                loop_content_separator: "",
+            ConfigV1 {
+                template_suffix: ".baker.j2".into(),
+                loop_separator: "".into(),
+                loop_content_separator: "".into(),
+                template_globs: Vec::new(),
+                questions: IndexMap::new(),
+                post_hook_filename: "post".into(),
+                pre_hook_filename: "pre".into(),
             },
+            Vec::new(),
+            false,
+        );
+        context.set_answers(answers);
+
+        let context = Box::leak(Box::new(context));
+        let processor = TemplateProcessor::new(
+            Box::leak(engine),
+            context,
+            &*Box::leak(Box::new(bakerignore)),
         );
         (template_root, output_root, processor)
     }
@@ -357,7 +405,7 @@ mod tests {
     /// {"file_name": "hello_world", "greetings": "Hello, World"}
     ///
     #[test]
-    fn it_works_1() {
+    fn renders_template_file_with_answers() {
         let answers = json!({"file_name": "hello_world", "greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}.txt.baker.j2");
@@ -386,7 +434,7 @@ mod tests {
     /// {}
     ///
     #[test]
-    fn it_works_3() {
+    fn copies_plain_file_without_suffix() {
         let answers = json!({});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("hello_world.txt");
@@ -415,7 +463,7 @@ mod tests {
     /// {"directory_name": "hello"}
     ///
     #[test]
-    fn it_works_4() {
+    fn renders_nested_directory_and_file() {
         let answers = json!({"directory_name": "hello", "greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path = template_root.path().join("{{directory_name}}");
@@ -448,7 +496,7 @@ mod tests {
     /// {"file_name": "world"}
     ///
     #[test]
-    fn it_works_5() {
+    fn errors_when_directory_placeholder_missing() {
         let answers = json!({"file_name": "world.txt"});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let nested_directory_path = template_root.path().join("{{directory_name}}");
@@ -477,7 +525,7 @@ mod tests {
     /// {"create_dir": true}
     ///
     #[test]
-    fn it_works_6() {
+    fn creates_directory_when_condition_is_true() {
         let answers = json!({"create_dir": true});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
@@ -504,7 +552,7 @@ mod tests {
     /// {"create_dir": false}
     ///
     #[test]
-    fn it_works_7() {
+    fn errors_when_conditional_directory_missing() {
         let answers = json!({"create_dir": false});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
@@ -533,7 +581,7 @@ mod tests {
     /// {"create_dir": true}
     ///
     #[test]
-    fn it_works_8() {
+    fn copies_file_inside_conditional_directory() {
         let answers = json!({"create_dir": true});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let nested_directory_path =
@@ -568,7 +616,7 @@ mod tests {
     /// {"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"}
     ///
     #[test]
-    fn it_works_9() {
+    fn renders_template_filename_and_strips_suffix() {
         let answers =
             json!({"file_name": "hello_world.txt.baker.j2", "greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
@@ -598,7 +646,7 @@ mod tests {
     /// {"greetings": "Hello, World"}
     ///
     #[test]
-    fn it_works_10() {
+    fn copies_non_template_file_with_j2_extension() {
         let answers = json!({"greetings": "Hello, World"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("hello_world.j2");
@@ -627,7 +675,7 @@ mod tests {
     /// {"first_name": "Ali", "last_name": "Aliyev"}
     ///
     #[test]
-    fn it_works_11() {
+    fn renders_readme_template_content() {
         let answers = json!({"first_name": "Ali", "last_name": "Aliyev"});
         let (template_root, output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("README.baker.j2");
@@ -656,7 +704,7 @@ mod tests {
     /// {"first_name": "Ali", "last_name": "Aliyev", "file_name": "README"}
     ///
     #[test]
-    fn it_works_12() {
+    fn renders_templated_filename_and_content() {
         let answers =
             json!({"first_name": "Ali", "last_name": "Aliyev", "file_name": "README"});
         let (template_root, output_root, processor) = new_test_processor(answers);
@@ -701,7 +749,7 @@ mod tests {
             }
         Expected result: `Error::ProcessError`
     "#]
-    fn it_works_14() {
+    fn renders_invalid_filename_returns_error() {
         let answers = json!({});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}.baker.j2");
@@ -726,7 +774,7 @@ mod tests {
     /// {}
     ///
     #[test]
-    fn it_works_15() {
+    fn renders_directory_placeholder_returns_error() {
         let answers = json!({});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}");
@@ -768,7 +816,7 @@ mod tests {
             }
         Expected result: `Error::ProcessError`
     "#]
-    fn it_works_16() {
+    fn renders_plain_file_placeholder_returns_error() {
         let answers = json!({});
         let (template_root, _output_root, processor) = new_test_processor(answers);
         let file_path = template_root.path().join("{{file_name}}.txt");
@@ -858,18 +906,7 @@ mod tests {
 
     #[test]
     fn test_is_template_with_loop_basic() {
-        let processor = TemplateProcessor::new(
-            Box::leak(Box::new(MiniJinjaRenderer::new())),
-            "./",
-            "./",
-            &*Box::leak(Box::new(json!({}))),
-            &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
-            TemplateConfig {
-                template_suffix: ".baker.j2",
-                loop_separator: "",
-                loop_content_separator: "",
-            },
-        );
+        let (_template_root, _output_root, processor) = new_test_processor(json!({}));
         let path = PathBuf::from(
             "{% for item in items %}{{ item.name }}.txt.baker.j2{% endfor %}",
         );
@@ -880,18 +917,7 @@ mod tests {
 
     #[test]
     fn test_is_template_with_loop_complex() {
-        let processor = TemplateProcessor::new(
-            Box::leak(Box::new(MiniJinjaRenderer::new())),
-            "./",
-            "./",
-            &*Box::leak(Box::new(json!({}))),
-            &*Box::leak(Box::new(GlobSetBuilder::new().build().unwrap())),
-            TemplateConfig {
-                template_suffix: ".baker.j2",
-                loop_separator: "",
-                loop_content_separator: "",
-            },
-        );
+        let (_template_root, _output_root, processor) = new_test_processor(json!({}));
         let path = PathBuf::from("{% if msg==hello %}{%for item in items in selectattr(\"name\")%}{{item.name}}.rs.baker.j2{% endfor %}{% endif %}");
         assert!(processor.is_template_with_loop(path));
     }

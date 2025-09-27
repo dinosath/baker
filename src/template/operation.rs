@@ -125,7 +125,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works_1() {
+    fn copy_operation_logs_overwrite_message() {
         let source = PathBuf::from("/tmp/test/file.txt");
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = true;
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn it_works_2() {
+    fn copy_operation_skips_when_not_confirmed() {
         let source = PathBuf::from("/tmp/test/file.txt");
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = false;
@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn it_works_3() {
+    fn copy_operation_logs_basic_message() {
         let source = PathBuf::from("/tmp/test/file.txt");
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = false;
@@ -169,7 +169,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
     #[test]
-    fn it_works_4() {
+    fn create_directory_skips_when_exists() {
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = false;
         let expected = format!(
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
     #[test]
-    fn it_works_5() {
+    fn create_directory_message_when_missing() {
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = false;
         let expected = format!("Creating directory '{}'", &target.display());
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
     #[test]
-    fn it_works_6() {
+    fn write_operation_overwrite_message() {
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = true;
         let expected =
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
     #[test]
-    fn it_works_7() {
+    fn write_operation_skips_without_confirmation() {
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = false;
         let expected =
@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
     #[test]
-    fn it_works_8() {
+    fn write_operation_basic_message() {
         let target = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = false;
         let expected = format!("Writing to '{}'", &target.display());
@@ -236,7 +236,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
     #[test]
-    fn it_works_9() {
+    fn ignore_operation_logs_message() {
         let source = PathBuf::from("/tmp/test/file.txt");
         let user_confirmed_overwrite = false;
         let expected =
