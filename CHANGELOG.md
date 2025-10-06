@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2025-10-06
+
+### 🚀 Features
+
+- Add hook runner configuration fields
+- Propagate hook runners to execution plan
+- Execute hooks via configured runners
+
+### 🐛 Bug Fixes
+
+- Allow templated hook runner tokens
+- Tolerate non-UTF8 hook output streams
+
+### 💼 Other
+
+- Emit notice when hook stdout contains non-UTF8 data
+
+### 🚜 Refactor
+
+- Extract cli args and add architecture doc
+- Stage runner workflow
+- Centralize generation context
+- Split file operations helpers
+- Streamline template loop handling
+- Reorganize prompt module
+- Streamline question rendering
+- Unify dry-run logging
+
+### 📚 Documentation
+
+- Align hook runner examples with hooks directory convention
+
+### 🧪 Testing
+
+- Rename generic it_works cases
+- Add coverage for prompt and runner helpers
+- Cover hook runners and update usage
+- Add hook runner integration fixtures
+- Fix Windows hook runner scripts to read stdin
+- Align expected Windows README newline
+
+### ⚙️ Miscellaneous Tasks
+
+- Update readme (#72)
+
 ## [0.11.0] - 2025-08-09
 
 ### 🚀 Features
@@ -189,6 +234,11 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Trying to fix an issue with libz-sys on ARM64 Windows
+- Temporarily removed aarch64-pc-windows-msvc from build
 - Bump 0.5.0
 
 ## [0.4.0] - 2025-03-28
@@ -205,14 +255,6 @@ All notable changes to this project will be documented in this file.
 - Handle error when HOME directory is invalid
 - Logging imports and add debug logs for hook execution
 - Improve JSON parsing from hook output
-
-### ⚙️ Miscellaneous Tasks
-
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Trying to fix an issue with libz-sys on ARM64 Windows
-- Temporarily removed aarch64-pc-windows-msvc from build
 
 ## [0.3.0] - 2025-03-21
 
