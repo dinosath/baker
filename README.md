@@ -49,7 +49,7 @@ Looking for an end-to-end view of the codebase? See [`docs/architecture.md`](doc
 
 You can install Baker using one of the following methods:
 
-### Instal via Scoop (Windows)
+### Install via Scoop (Windows)
 
 ```ps1
 scoop bucket add baker https://github.com/Gasoid/baker-scoop
