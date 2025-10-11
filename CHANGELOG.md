@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.1] - 2025-10-11
+
+### ⚙️ Miscellaneous Tasks
+
+- *(dist)* Switch linux targets to musl
+
 ## [0.12.0] - 2025-10-06
 
 ### 🚀 Features
