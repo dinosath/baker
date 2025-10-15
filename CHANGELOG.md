@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.2] - 2025-10-11
+
+- Fix issue with symlinks (#80)
+
 ## [0.12.1] - 2025-10-11
 
 ### ⚙️ Miscellaneous Tasks
