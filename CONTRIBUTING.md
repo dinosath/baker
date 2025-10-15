@@ -9,6 +9,7 @@ Thank you for your interest in the Baker project! This document contains guideli
 - [Release Process](#release-process)
 - [Automatic Changelog Generation](#automatic-changelog-generation)
 - [Development Environment Setup](#development-environment-setup)
+- [Pre-Commit Hooks](#pre-commit-hooks)
 
 ## 🔧 Conventional Commits
 
@@ -280,6 +281,13 @@ When merging, use "Squash and merge" with proper title:
 ```
 feat: add YAML template validation (#45)
 ```
+
+## Pre-Commit Hooks
+
+To keep contributions consistent, you can install git pre-commit hooks. Baker supports two approaches:
+
+1. Python-based [pre-commit](https://pre-commit.com/) framework 
+2. Rust-based [prek](https://github.com/j178/prek) tool
 
 ## ❓ Questions
 
