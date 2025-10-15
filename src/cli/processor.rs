@@ -125,6 +125,7 @@ impl<'a> FileProcessor<'a> {
     /// Copy a file from source to destination, creating parent directories if needed.
     fn copy_file<P: AsRef<Path>>(&self, source_path: P, dest_path: P) -> Result<()> {
         let dest_path = dest_path.as_ref();
+        let source_path = source_path.as_ref();
 
         if self.context.dry_run() {
             return Ok(());
@@ -135,7 +136,62 @@ impl<'a> FileProcessor<'a> {
             self.create_dir_all(parent)?;
         }
 
-        Ok(std::fs::copy(source_path.as_ref(), dest_path).map(|_| ())?)
+        let metadata = std::fs::symlink_metadata(source_path)?;
+        if metadata.file_type().is_symlink() {
+            if self.context.config().follow_symlinks {
+                return self.copy_followed_symlink(source_path, dest_path);
+            } else {
+                return self.copy_symlink(source_path, dest_path);
+            }
+        }
+
+        Ok(std::fs::copy(source_path, dest_path).map(|_| ())?)
+    }
+
+    /// When follow_symlinks is enabled, copy the content the symlink points to.
+    fn copy_followed_symlink(&self, source_link: &Path, dest_path: &Path) -> Result<()> {
+        let target_rel = std::fs::read_link(source_link)?;
+        // Resolve relative targets against the symlink's parent directory.
+        let resolved_target = if target_rel.is_relative() {
+            source_link.parent().unwrap_or_else(|| Path::new("")).join(&target_rel)
+        } else {
+            target_rel.clone()
+        };
+        let target_meta = std::fs::metadata(&resolved_target)?;
+        if target_meta.is_file() {
+            std::fs::copy(&resolved_target, dest_path)?;
+            return Ok(());
+        }
+        // For now, if it's a directory (or other), fall back to recreating symlink.
+        self.copy_symlink(source_link, dest_path)
+    }
+
+    /// Recreate a symbolic link at destination preserving original (possibly relative) target.
+    /// On overwrite, existing file/symlink is removed first.
+    fn copy_symlink(&self, source_path: &Path, dest_path: &Path) -> Result<()> {
+        let link_target = std::fs::read_link(source_path)?;
+        if dest_path.exists() || dest_path.is_symlink() {
+            std::fs::remove_file(dest_path)?;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            symlink(&link_target, dest_path)?;
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::{symlink_dir, symlink_file};
+            let target_is_dir = link_target
+                .canonicalize()
+                .map(|p| p.is_dir())
+                .unwrap_or(false);
+            if target_is_dir {
+                symlink_dir(&link_target, dest_path)?;
+            } else {
+                symlink_file(&link_target, dest_path)?;
+            }
+        }
+        Ok(())
     }
 
     /// Write content to a file, creating parent directories if needed.
@@ -182,6 +238,7 @@ mod tests {
 
     fn build_file_processor(
         skip_confirms: Vec<SkipConfirm>,
+        follow_symlinks: bool,
     ) -> (TempDir, TempDir, FileProcessor<'static>) {
         let template_root = TempDir::new().unwrap();
         let output_root = TempDir::new().unwrap();
@@ -201,6 +258,7 @@ mod tests {
                 pre_hook_filename: "pre".into(),
                 post_hook_runner: Vec::new(),
                 pre_hook_runner: Vec::new(),
+                follow_symlinks,
             },
             skip_confirms,
             false,
@@ -214,7 +272,7 @@ mod tests {
 
     #[test]
     fn skips_overwrite_prompt_for_new_files() {
-        let (_template_root, _output_root, processor) = build_file_processor(Vec::new());
+        let (_template_root, _output_root, processor) = build_file_processor(Vec::new(), false);
         assert!(processor.should_skip_overwrite_prompt(false));
         assert!(!processor.should_skip_overwrite_prompt(true));
     }
@@ -222,15 +280,60 @@ mod tests {
     #[test]
     fn skips_overwrite_prompt_when_flagged() {
         let (_template_root, _output_root, processor) =
-            build_file_processor(vec![SkipConfirm::Overwrite]);
+            build_file_processor(vec![SkipConfirm::Overwrite], false);
         assert!(processor.should_skip_overwrite_prompt(true));
     }
 
     #[test]
     fn confirm_overwrite_short_circuits_when_skip_applies() {
-        let (_template_root, output_root, processor) = build_file_processor(Vec::new());
+        let (_template_root, output_root, processor) = build_file_processor(Vec::new(), false);
         let target = output_root.path().join("new-file.txt");
         let result = processor.confirm_overwrite(&target, false).unwrap();
         assert!(result);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn copies_symlink_preserves_relative_target() {
+        use std::os::unix::fs::symlink;
+        let (template_root, output_root, processor) = build_file_processor(Vec::new(), false);
+        let src_file = template_root.path().join("orig.txt");
+        std::fs::write(&src_file, "hello").unwrap();
+        let src_link = template_root.path().join("link.txt");
+        symlink("orig.txt", &src_link).unwrap(); // relative target
+        let dest_link = output_root.path().join("link.txt");
+        processor.copy_file(&src_link, &dest_link).unwrap();
+        assert!(dest_link.is_symlink());
+        let recreated_target = std::fs::read_link(dest_link).unwrap();
+        assert_eq!(recreated_target, PathBuf::from("orig.txt"));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn copies_symlink_preserves_relative_target() {
+        use std::os::windows::fs::symlink_file;
+        let (template_root, output_root, processor) = build_file_processor(Vec::new(), false);
+        let src_file = template_root.path().join("orig.txt");
+        std::fs::write(&src_file, "hello").unwrap();
+        let src_link = template_root.path().join("link.txt");
+        symlink_file(&src_file, &src_link).unwrap();
+        let dest_link = output_root.path().join("link.txt");
+        processor.copy_file(&src_link, &dest_link).unwrap();
+        assert!(dest_link.is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn copies_followed_symlink_creates_regular_file() {
+        use std::os::unix::fs::symlink;
+        let (template_root, output_root, processor) = build_file_processor(Vec::new(), true);
+        let src_file = template_root.path().join("orig.txt");
+        std::fs::write(&src_file, "hello-follow").unwrap();
+        let src_link = template_root.path().join("link.txt");
+        symlink("orig.txt", &src_link).unwrap();
+        let dest_link = output_root.path().join("link.txt");
+        processor.copy_file(&src_link, &dest_link).unwrap();
+        assert!(!dest_link.is_symlink());
+        assert_eq!(std::fs::read_to_string(dest_link).unwrap(), "hello-follow");
     }
 }

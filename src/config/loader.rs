@@ -32,6 +32,8 @@ pub struct ConfigV1 {
     pub post_hook_runner: Vec<String>,
     #[serde(default = "get_default_pre_hook_runner")]
     pub pre_hook_runner: Vec<String>,
+    #[serde(default = "get_default_follow_symlinks")]
+    pub follow_symlinks: bool,
 }
 
 impl ConfigV1 {
@@ -114,6 +116,10 @@ fn get_default_loop_content_separator() -> String {
     DEFAULT_LOOP_CONTENT_SEPARATOR.to_string()
 }
 
+fn get_default_follow_symlinks() -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +159,24 @@ questions: {}
             vec!["powershell".to_string(), "-File".to_string()]
         );
         assert_eq!(cfg.post_hook_runner, vec!["python3".to_string(), "-u".to_string()]);
+    }
+
+    #[test]
+    fn follow_symlinks_defaults_false() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert!(!cfg.follow_symlinks);
+    }
+
+    #[test]
+    fn follow_symlinks_parses_true() {
+        let raw = r#"schemaVersion: v1
+follow_symlinks: true
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert!(cfg.follow_symlinks);
     }
 }

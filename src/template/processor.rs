@@ -380,6 +380,7 @@ mod tests {
                 pre_hook_filename: "pre".into(),
                 post_hook_runner: Vec::new(),
                 pre_hook_runner: Vec::new(),
+                follow_symlinks: false,
             },
             Vec::new(),
             false,
