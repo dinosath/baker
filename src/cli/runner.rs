@@ -58,6 +58,7 @@ impl Runner {
         let output_root = self.prepare_output_dir()?;
         let template_root = self.resolve_template()?;
         let config = self.load_and_validate_config(&template_root)?;
+        debug!("Loaded config: follow_symlinks={}", config.follow_symlinks);
         self.add_templates_in_renderer(&template_root, &config, engine);
 
         Ok(GenerationContext::new(

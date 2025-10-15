@@ -114,4 +114,18 @@ mod tests {
             ),
         );
     }
+
+    #[test]
+    fn test_symlinks_copy() {
+        run_and_assert("tests/templates/symlinks", "tests/expected/symlinks", None);
+    }
+
+    #[test]
+    fn test_symlinks_follow_copy() {
+        run_and_assert(
+            "tests/templates/symlinks_follow",
+            "tests/expected/symlinks_follow",
+            None,
+        );
+    }
 }

@@ -102,6 +102,15 @@ To get started, you can use the [examples/demo](examples/demo) template, which d
     └── __init__.py
 ```
 
+Note: By default Baker preserves symbolic links. To copy the contents the link points to (dereference), set `follow_symlinks: true` in `baker.yaml`:
+
+```yaml
+schemaVersion: v1
+follow_symlinks: true
+questions: {}
+```
+If a symlink points to a file it will be duplicated as a regular file. Symlinks to directories are currently recreated as symlinks (not recursively copied).
+
 As a quick start, you can run the following command to generate a project:
 
 ```

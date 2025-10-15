@@ -34,6 +34,10 @@ impl GenerationContext {
         &self.config
     }
 
+    pub fn config_mut(&mut self) -> &mut ConfigV1 {
+        &mut self.config
+    }
+
     pub fn skip_confirms(&self) -> &[SkipConfirm] {
         &self.skip_confirms
     }
