@@ -117,11 +117,7 @@ mod tests {
 
     #[test]
     fn test_symlinks_copy() {
-        run_and_assert(
-            "tests/templates/symlinks",
-            "tests/expected/symlinks",
-            None,
-        );
+        run_and_assert("tests/templates/symlinks", "tests/expected/symlinks", None);
     }
 
     #[test]

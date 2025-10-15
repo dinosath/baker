@@ -181,10 +181,8 @@ impl<'a> FileProcessor<'a> {
         #[cfg(windows)]
         {
             use std::os::windows::fs::{symlink_dir, symlink_file};
-            let target_is_dir = link_target
-                .canonicalize()
-                .map(|p| p.is_dir())
-                .unwrap_or(false);
+            let target_is_dir =
+                link_target.canonicalize().map(|p| p.is_dir()).unwrap_or(false);
             if target_is_dir {
                 symlink_dir(&link_target, dest_path)?;
             } else {
@@ -272,7 +270,8 @@ mod tests {
 
     #[test]
     fn skips_overwrite_prompt_for_new_files() {
-        let (_template_root, _output_root, processor) = build_file_processor(Vec::new(), false);
+        let (_template_root, _output_root, processor) =
+            build_file_processor(Vec::new(), false);
         assert!(processor.should_skip_overwrite_prompt(false));
         assert!(!processor.should_skip_overwrite_prompt(true));
     }
@@ -286,7 +285,8 @@ mod tests {
 
     #[test]
     fn confirm_overwrite_short_circuits_when_skip_applies() {
-        let (_template_root, output_root, processor) = build_file_processor(Vec::new(), false);
+        let (_template_root, output_root, processor) =
+            build_file_processor(Vec::new(), false);
         let target = output_root.path().join("new-file.txt");
         let result = processor.confirm_overwrite(&target, false).unwrap();
         assert!(result);
@@ -296,7 +296,8 @@ mod tests {
     #[cfg(unix)]
     fn copies_symlink_preserves_relative_target() {
         use std::os::unix::fs::symlink;
-        let (template_root, output_root, processor) = build_file_processor(Vec::new(), false);
+        let (template_root, output_root, processor) =
+            build_file_processor(Vec::new(), false);
         let src_file = template_root.path().join("orig.txt");
         std::fs::write(&src_file, "hello").unwrap();
         let src_link = template_root.path().join("link.txt");
@@ -312,7 +313,8 @@ mod tests {
     #[cfg(windows)]
     fn copies_symlink_preserves_relative_target() {
         use std::os::windows::fs::symlink_file;
-        let (template_root, output_root, processor) = build_file_processor(Vec::new(), false);
+        let (template_root, output_root, processor) =
+            build_file_processor(Vec::new(), false);
         let src_file = template_root.path().join("orig.txt");
         std::fs::write(&src_file, "hello").unwrap();
         let src_link = template_root.path().join("link.txt");
@@ -326,7 +328,8 @@ mod tests {
     #[cfg(unix)]
     fn copies_followed_symlink_creates_regular_file() {
         use std::os::unix::fs::symlink;
-        let (template_root, output_root, processor) = build_file_processor(Vec::new(), true);
+        let (template_root, output_root, processor) =
+            build_file_processor(Vec::new(), true);
         let src_file = template_root.path().join("orig.txt");
         std::fs::write(&src_file, "hello-follow").unwrap();
         let src_link = template_root.path().join("link.txt");
