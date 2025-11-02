@@ -1,0 +1,22 @@
+baker_version: 0.12.2
+template_source: tests/templates/yaml_type
+template_root: tests/templates/yaml_type
+git_commit: null
+answers:
+  environments:
+    development:
+      debug: true
+      url: http://localhost:8000
+    production:
+      debug: false
+      url: https://staging.example.com
+config:
+  template_suffix: .baker.j2
+  loop_separator: <--SPLIT-->
+  loop_content_separator: <<CONTENT>>
+  template_globs: []
+  post_hook_filename: post
+  pre_hook_filename: pre
+  post_hook_runner: []
+  pre_hook_runner: []
+  follow_symlinks: false

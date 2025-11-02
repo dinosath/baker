@@ -1,0 +1,16 @@
+baker_version: 0.12.2
+template_source: tests/templates/different_template_suffix
+template_root: tests/templates/different_template_suffix
+git_commit: null
+answers:
+  message: world!
+config:
+  template_suffix: .j3
+  loop_separator: <--SPLIT-->
+  loop_content_separator: <<CONTENT>>
+  template_globs: []
+  post_hook_filename: post
+  pre_hook_filename: pre
+  post_hook_runner: []
+  pre_hook_runner: []
+  follow_symlinks: false

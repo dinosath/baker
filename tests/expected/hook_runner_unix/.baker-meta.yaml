@@ -1,0 +1,18 @@
+baker_version: 0.12.2
+template_source: tests/templates/hook_runner_unix
+template_root: tests/templates/hook_runner_unix
+git_commit: null
+answers:
+  python_version: '3'
+config:
+  template_suffix: .baker.j2
+  loop_separator: <--SPLIT-->
+  loop_content_separator: <<CONTENT>>
+  template_globs: []
+  post_hook_filename: post.py
+  pre_hook_filename: pre.py
+  post_hook_runner:
+  - python{{ python_version }}
+  pre_hook_runner:
+  - python3
+  follow_symlinks: false

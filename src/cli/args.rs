@@ -1,5 +1,5 @@
 use crate::constants::{exit_codes, verbosity};
-use clap::{error::ErrorKind, CommandFactory, Parser, ValueEnum};
+use clap::{error::ErrorKind, Parser, Subcommand, CommandFactory, ValueEnum};
 use log::LevelFilter;
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -10,6 +10,22 @@ const HELP_TEMPLATE: &str = r#"{about-section}
 {all-args}
 {after-help}
 "#;
+
+/// CLI arguments for Baker.
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Generate a project from a template (copy mode)
+    Copy(Args),
+    /// Update an existing project reusing stored answers (update mode)
+    Update(UpdateArgs),
+}
 
 /// Skip confirmation prompts for specific stages.
 #[derive(Debug, Clone, ValueEnum, Copy, PartialEq)]
@@ -34,46 +50,80 @@ impl Display for SkipConfirm {
     }
 }
 
-/// CLI arguments for Baker.
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+/// Arguments for the `copy` command (original Args structure)
+#[derive(Parser, Debug, Clone)]
 pub struct Args {
     /// Template directory or Git repository.
     #[arg(value_name = "TEMPLATE")]
     pub template: String,
-
     /// Destination directory for generated files.
     #[arg(value_name = "OUTPUT_DIR")]
     pub output_dir: PathBuf,
-
     /// Force overwrite of an existing output directory.
     #[arg(short, long)]
     pub force: bool,
-
     /// Increase logging verbosity (`-v`, `-vv`, `-vvv`).
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
-
     /// Predefined answers as JSON string or `-` to read from stdin.
     #[arg(short, long)]
     pub answers: Option<String>,
-
     /// Confirmation prompts to skip (comma-separated).
     #[arg(long = "skip-confirms", value_delimiter = ',')]
     #[arg(value_enum)]
     pub skip_confirms: Vec<SkipConfirm>,
-
     /// Disable interactive prompts when answers are provided.
     #[arg(long = "non-interactive")]
     pub non_interactive: bool,
-
     /// Preview actions without touching the filesystem.
     #[arg(long = "dry-run")]
     pub dry_run: bool,
 }
 
-/// Parse command line arguments with custom handling for missing required inputs.
+/// Arguments for the `update` command
+#[derive(Parser, Debug, Clone)]
+pub struct UpdateArgs {
+    /// Existing project directory to update.
+    #[arg(value_name = "OUTPUT_DIR")]
+    pub output_dir: PathBuf,
+    /// Template directory or Git reposit ory (optional; defaults to metadata template_source if omitted)
+    #[arg(value_name = "TEMPLATE")]
+    pub template: Option<String>,
+    /// Increase logging verbosity (`-v`, `-vv`, `-vvv`).
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+    /// Additional/override answers as JSON string or `-` to read from stdin.
+    #[arg(short, long)]
+    pub answers: Option<String>,
+    /// Confirmation prompts to skip (comma-separated).
+    #[arg(long = "skip-confirms", value_delimiter = ',')]
+    #[arg(value_enum)]
+    pub skip_confirms: Vec<SkipConfirm>,
+    /// Disable interactive prompts (only new questions asked otherwise).
+    #[arg(long = "non-interactive")]
+    pub non_interactive: bool,
+    /// Preview actions without touching the filesystem.
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+}
+
+/// Parse full CLI including subcommands.
+pub fn parse_cli() -> Cli {
+    Cli::try_parse().unwrap_or_else(|e| {
+        if e.kind() == ErrorKind::MissingRequiredArgument {
+            Cli::command().help_template(HELP_TEMPLATE).print_help().unwrap();
+            std::process::exit(exit_codes::FAILURE);
+        } else {
+            e.exit();
+        }
+    })
+}
+
+/// Backward-compatible helper (legacy behavior) parsing only `copy` Args directly.
 pub fn get_args() -> Args {
+    // Treat legacy invocation (without subcommand) as copy;
+    // Attempt to parse as if user provided positional arguments directly.
+    // We fallback to showing help via existing behavior.
     Args::try_parse().unwrap_or_else(|e| {
         if e.kind() == ErrorKind::MissingRequiredArgument {
             Args::command().help_template(HELP_TEMPLATE).print_help().unwrap();
@@ -109,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_minimal_args() {
+    fn parses_minimal_copy_args() {
         use clap::Parser;
         let args = Args::parse_from(["baker", "template_dir", "output_dir", "--force"]);
         assert_eq!(args.template, "template_dir");
@@ -125,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_full_feature_flags() {
+    fn parses_full_feature_copy_flags() {
         use clap::Parser;
         let args = Args::parse_from([
             "baker",
@@ -149,5 +199,26 @@ mod tests {
         assert!(args.skip_confirms.contains(&SkipConfirm::Overwrite));
         assert!(args.non_interactive);
         assert!(args.dry_run);
+    }
+
+    #[test]
+    fn parses_update_args() {
+        use clap::Parser;
+        let upd = UpdateArgs::parse_from([
+            "baker",
+            "output_dir",
+            "-vv",
+            "--answers",
+            "{\"extra\":true}",
+            "--skip-confirms",
+            "hooks",
+            "--non-interactive",
+        ]);
+        assert_eq!(upd.output_dir, PathBuf::from("output_dir"));
+        assert_eq!(upd.verbose, 2);
+        assert!(upd.answers.is_some());
+        assert!(upd.skip_confirms.contains(&SkipConfirm::Hooks));
+        assert!(upd.non_interactive);
+        assert!(!upd.dry_run);
     }
 }

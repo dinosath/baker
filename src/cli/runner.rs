@@ -11,6 +11,7 @@ use crate::{
     renderer::TemplateRenderer,
     template::{get_template_engine, processor::TemplateProcessor},
 };
+use crate::cli::metadata::BakerMeta;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use log::debug;
 use serde_json::json;
@@ -35,16 +36,34 @@ impl Runner {
         let mut engine = get_template_engine();
         let mut context = self.prepare_environment(&mut engine)?;
 
+        // Load metadata if update flag set
+        let existing_metadata = None; // copy mode never loads metadata automatically
+
         let hook_plan = self.prepare_hooks(&context, &engine)?;
 
         let pre_hook_output = self.maybe_run_pre_hook(&hook_plan, &context, &engine)?;
 
-        let answers = self.gather_answers(context.config(), &engine, pre_hook_output)?;
-        context.set_answers(answers);
+        let answers = self.gather_answers(context.config(), &engine, pre_hook_output, existing_metadata.as_ref())?;
+        context.set_answers(answers.clone());
 
         self.process_templates(&context, &engine)?;
 
         self.maybe_run_post_hook(&hook_plan, &context, &engine)?;
+
+        // Save metadata (skip in dry-run). Always save so future updates have a baseline.
+        if !context.dry_run() {
+            let meta = BakerMeta {
+                baker_version: env!("CARGO_PKG_VERSION").to_string(),
+                template_source: self.args.template.clone(),
+                template_root: context.template_root().display().to_string(),
+                git_commit: Self::get_git_commit(context.template_root()),
+                answers: answers.clone(),
+                config: context.config().clone(),
+            };
+            if let Err(e) = meta.save(context.output_root()) { log::warn!("Failed to save meta file: {e}"); }
+        } else {
+            log_dry_run_action("Would save meta", context.output_root().join(".baker-meta.yaml"));
+        }
 
         self.finish(&context);
 
@@ -177,9 +196,10 @@ impl Runner {
         config: &crate::config::ConfigV1,
         engine: &dyn crate::renderer::TemplateRenderer,
         pre_hook_output: Option<String>,
+        existing_answers: Option<&serde_json::Value>,
     ) -> Result<serde_json::Value> {
         let collector = AnswerCollector::new(engine, self.args.non_interactive);
-        collector.collect_answers(config, pre_hook_output, self.args.answers.clone())
+        collector.collect_answers(config, pre_hook_output, self.args.answers.clone(), existing_answers)
     }
 
     /// Processes all template files
@@ -415,6 +435,17 @@ impl Runner {
             String::new()
         }
     }
+
+    fn get_git_commit(template_root: &Path) -> Option<String> {
+        let git_dir = template_root.join(".git");
+        if !git_dir.exists() { return None; }
+        if let Ok(repo) = git2::Repository::discover(template_root) {
+            if let Ok(head) = repo.head() {
+                if let Some(oid) = head.target() { return Some(oid.to_string()); }
+            }
+        }
+        None
+    }
 }
 
 struct HookPlan {
@@ -574,4 +605,44 @@ fn completion_message(dry_run: bool, output_root: &Path) -> String {
 pub fn run(args: Args) -> Result<()> {
     let runner = Runner::new(args);
     runner.run()
+}
+
+/// Runs the update workflow, loading metadata and processing templates without re-prompting for
+/// answers or overwriting existing files unless explicitly forced.
+pub fn run_update(mut args: Args) -> Result<()> {
+    // If template not provided (empty synthetic), attempt to read from unified meta
+    let meta_opt = BakerMeta::load(&args.output_dir)?;
+    if args.template.is_empty() {
+        if let Some(meta) = &meta_opt { args.template = meta.template_source.clone(); }
+        else { return Err(Error::Other(anyhow::anyhow!("No meta file found in '{}' to infer template source. Provide TEMPLATE argument for legacy projects.", args.output_dir.display()))); }
+    }
+    let mut engine = get_template_engine();
+    // Allow existing output dir; force flag not required
+    args.force = true; // bypass existence check
+    let runner = Runner::new(args.clone());
+    // Prepare environment
+    let mut context = runner.prepare_environment(&mut engine)?;
+    let existing_answers = meta_opt.as_ref().map(|m| m.answers.clone());
+    let hook_plan = runner.prepare_hooks(&context, &engine)?;
+    let pre_hook_output = runner.maybe_run_pre_hook(&hook_plan, &context, &engine)?;
+    // FIX: unwrap gather_answers result
+    let answers = runner.gather_answers(context.config(), &engine, pre_hook_output, existing_answers.as_ref())?;
+    context.set_answers(answers.clone());
+    runner.process_templates(&context, &engine)?;
+    runner.maybe_run_post_hook(&hook_plan, &context, &engine)?;
+    if !context.dry_run() {
+        let meta = BakerMeta {
+            baker_version: env!("CARGO_PKG_VERSION").to_string(),
+            template_source: args.template.clone(),
+            template_root: context.template_root().display().to_string(),
+            git_commit: Runner::get_git_commit(context.template_root()),
+            answers: answers.clone(),
+            config: context.config().clone(),
+        };
+        if let Err(e) = meta.save(context.output_root()) { log::warn!("Failed to save meta file: {e}"); }
+    } else {
+        log_dry_run_action("Would save meta", context.output_root().join(".baker-meta.yaml"));
+    }
+    runner.finish(&context);
+    Ok(())
 }

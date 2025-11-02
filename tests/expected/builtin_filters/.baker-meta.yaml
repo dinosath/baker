@@ -1,0 +1,20 @@
+baker_version: 0.12.2
+template_source: tests/templates/builtin_filters
+template_root: tests/templates/builtin_filters
+git_commit: null
+answers:
+  class_name: ExampleProject
+  constant_name: EXAMPLE_PROJECT
+  project_name: Example Project
+  project_slug: example_project
+  table_name: example_projects
+config:
+  template_suffix: .baker.j2
+  loop_separator: <--SPLIT-->
+  loop_content_separator: <<CONTENT>>
+  template_globs: []
+  post_hook_filename: post
+  pre_hook_filename: pre
+  post_hook_runner: []
+  pre_hook_runner: []
+  follow_symlinks: false

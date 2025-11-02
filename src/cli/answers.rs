@@ -37,8 +37,14 @@ impl<'a> AnswerCollector<'a> {
         config: &ConfigV1,
         pre_hook_output: Option<String>,
         cli_answers: Option<String>,
+        existing_answers: Option<&serde_json::Value>,
     ) -> Result<Value> {
         let mut answers = Map::new();
+
+        // Existing answers (from metadata on update) come first so they are preserved
+        if let Some(existing) = existing_answers {
+            if let Value::Object(map) = existing { answers.extend(map.clone()); }
+        }
 
         // Add answers from pre-hook output
         if let Some(result) = pre_hook_output {
@@ -72,6 +78,8 @@ impl<'a> AnswerCollector<'a> {
 
         // Collect answers for each question through interactive prompts
         for (key, question) in &config.questions {
+            // In update mode with existing answer, skip asking and keep the stored value unless CLI overrides
+            if answers.contains_key(key) { continue; }
             self.collect_question_answer(&mut answers, key, question)?;
         }
 
@@ -138,11 +146,28 @@ impl<'a> AnswerCollector<'a> {
         &self,
         buf: String,
     ) -> Result<serde_json::Map<String, serde_json::Value>> {
-        let value = serde_json::from_str(&buf)?;
-
-        match value {
-            serde_json::Value::Object(map) => Ok(map),
-            _ => Ok(serde_json::Map::new()),
+        // First attempt: parse as-is
+        match serde_json::from_str::<serde_json::Value>(&buf) {
+            Ok(value) => match value {
+                serde_json::Value::Object(map) => Ok(map),
+                _ => Ok(serde_json::Map::new()),
+            },
+            Err(initial_err) => {
+                // Fallback: if the buffer appears to contain shell-escaped quotes (\") produced
+                // by over-escaping in invocation contexts, attempt a naive unescape and re-parse.
+                if buf.contains("\\\"") {
+                    let cleaned = buf.replace("\\\"", "\"");
+                    match serde_json::from_str::<serde_json::Value>(&cleaned) {
+                        Ok(value) => match value {
+                            serde_json::Value::Object(map) => Ok(map),
+                            _ => Ok(serde_json::Map::new()),
+                        },
+                        Err(_) => Err(Error::JSONParseError(initial_err)),
+                    }
+                } else {
+                    Err(Error::JSONParseError(initial_err))
+                }
+            }
         }
     }
 
@@ -362,5 +387,13 @@ mod tests {
             ValidationError::FieldValidation(msg) => assert_eq!(msg, "custom error"),
             _ => panic!("Expected FieldValidation error"),
         }
+    }
+
+    #[test]
+    fn parse_string_to_json_handles_escaped_quotes() {
+        let engine = get_template_engine();
+        let collector = AnswerCollector::new(&engine, true);
+        let map = collector.parse_string_to_json("{\\\"foo\\\":\\\"bar\\\"}".to_string()).unwrap();
+        assert_eq!(map.get("foo"), Some(&json!("bar")));
     }
 }

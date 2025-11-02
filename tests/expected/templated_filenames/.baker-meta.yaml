@@ -1,0 +1,19 @@
+baker_version: 0.12.2
+template_source: tests/templates/templated_filenames
+template_root: tests/templates/templated_filenames
+git_commit: null
+answers:
+  project_class: MyAwesomeProject
+  project_name: my awesome project
+  project_slug: my_awesome_project
+  use_database: true
+config:
+  template_suffix: .baker.j2
+  loop_separator: <--SPLIT-->
+  loop_content_separator: <<CONTENT>>
+  template_globs: []
+  post_hook_filename: post
+  pre_hook_filename: pre
+  post_hook_runner: []
+  pre_hook_runner: []
+  follow_symlinks: false

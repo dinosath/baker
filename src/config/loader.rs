@@ -8,11 +8,11 @@ use crate::constants::{
 use crate::error::{Error, Result};
 use crate::ext::PathExt;
 use indexmap::IndexMap;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Main configuration structure holding all questions
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ConfigV1 {
     #[serde(default = "get_default_template_suffix")]
     pub template_suffix: String,
@@ -22,7 +22,7 @@ pub struct ConfigV1 {
     pub loop_content_separator: String,
     #[serde(default = "get_default_template_globs")]
     pub template_globs: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub questions: IndexMap<String, Question>,
     #[serde(default = "get_default_post_hook_filename")]
     pub post_hook_filename: String,
@@ -50,7 +50,24 @@ impl ConfigV1 {
     }
 }
 
-#[derive(Debug, Deserialize)]
+impl Clone for ConfigV1 {
+    fn clone(&self) -> Self {
+        Self {
+            template_suffix: self.template_suffix.clone(),
+            loop_separator: self.loop_separator.clone(),
+            loop_content_separator: self.loop_content_separator.clone(),
+            template_globs: self.template_globs.clone(),
+            questions: IndexMap::new(), // intentionally skip cloning questions
+            post_hook_filename: self.post_hook_filename.clone(),
+            pre_hook_filename: self.pre_hook_filename.clone(),
+            post_hook_runner: self.post_hook_runner.clone(),
+            pre_hook_runner: self.pre_hook_runner.clone(),
+            follow_symlinks: self.follow_symlinks,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "schemaVersion")]
 pub enum Config {
     #[serde(rename = "v1")]

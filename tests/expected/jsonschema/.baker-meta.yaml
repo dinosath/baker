@@ -1,0 +1,19 @@
+baker_version: 0.12.2
+template_source: tests/templates/jsonschema
+template_root: tests/templates/jsonschema
+git_commit: null
+answers:
+  database_config:
+    engine: redis
+    host: localhost
+    port: 6379
+config:
+  template_suffix: .baker.j2
+  loop_separator: <--SPLIT-->
+  loop_content_separator: <<CONTENT>>
+  template_globs: []
+  post_hook_filename: post
+  pre_hook_filename: pre
+  post_hook_runner: []
+  pre_hook_runner: []
+  follow_symlinks: false
