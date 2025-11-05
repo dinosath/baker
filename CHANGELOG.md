@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.13.0] - 2025-11-05
 
 ### 🚀 Features
 
@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Update dependencies (#88)
+- *(upd)* Changelog
 
 ## [0.12.2] - 2025-10-15
 
