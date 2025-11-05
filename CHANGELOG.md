@@ -2,9 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.12.2] - 2025-10-11
+## [unreleased]
 
-- Fix issue with symlinks (#80)
+### 🚀 Features
+
+- Add schema file in question (#85)
+- Add automated release pr with release-plz (#86)
+- Enable features json and urlencode (#89)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update dependencies (#88)
+
+## [0.12.2] - 2025-10-15
+
+### ⚙️ Miscellaneous Tasks
+
+- *(upd)* Changelog
 
 ## [0.12.1] - 2025-10-11
 
@@ -244,11 +258,6 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Fix cross-compilation dependencies for multiple targets
-- Trying to fix an issue with libz-sys on ARM64 Windows
-- Temporarily removed aarch64-pc-windows-msvc from build
 - Bump 0.5.0
 
 ## [0.4.0] - 2025-03-28
@@ -265,6 +274,14 @@ All notable changes to this project will be documented in this file.
 - Handle error when HOME directory is invalid
 - Logging imports and add debug logs for hook execution
 - Improve JSON parsing from hook output
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Fix cross-compilation dependencies for multiple targets
+- Trying to fix an issue with libz-sys on ARM64 Windows
+- Temporarily removed aarch64-pc-windows-msvc from build
 
 ## [0.3.0] - 2025-03-21
 
