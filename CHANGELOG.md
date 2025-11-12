@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.1] - 2025-11-12
+
+### 🚀 Features
+
+- Add import root (#90)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(upd)* Changelog
+
 ## [0.13.0] - 2025-11-05
 
 ### 🚀 Features
