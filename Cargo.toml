@@ -1,6 +1,6 @@
 [package]
 name = "baker"
-version = "0.13.1"
+version = "0.13.2"
 edition = "2021"
 authors = ["Ali Aliyev <ali@aliev.me>"]
 repository = "https://github.com/aliev/baker"
@@ -21,7 +21,7 @@ minijinja = { version = "2.12", features = [
     "loop_controls",
     "loader",
     "json",
-    "urlencode"
+    "urlencode",
 ] }
 globset = "0.4"
 walkdir = "2.5"
