@@ -1,0 +1,4 @@
+service:
+  name: placeholder
+  annotations:
+    example.com/enabled: "true"

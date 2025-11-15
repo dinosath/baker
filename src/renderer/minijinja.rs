@@ -1,6 +1,6 @@
 use super::filters::*;
 use crate::{error::Result, ext::PathExt, renderer::interface::TemplateRenderer};
-use minijinja::Environment;
+use minijinja::{AutoEscape, Environment};
 use serde_json::json;
 use std::path::Path;
 
@@ -46,8 +46,12 @@ impl MiniJinjaRenderer {
         template: &str,
         context: &serde_json::Value,
         template_name: Option<&str>,
+        auto_escape_override: Option<AutoEscape>,
     ) -> Result<String> {
         let mut env = self.env.clone();
+        if let Some(auto_escape) = auto_escape_override {
+            env.set_auto_escape_callback(move |_| auto_escape);
+        }
         let name = template_name.unwrap_or("temp");
         env.add_template(name, template)?;
 
@@ -93,7 +97,7 @@ impl TemplateRenderer for MiniJinjaRenderer {
         context: &serde_json::Value,
         template_name: Option<&str>,
     ) -> Result<String> {
-        self.render_internal(template, context, template_name)
+        self.render_internal(template, context, template_name, None)
     }
 
     fn render_path(
@@ -103,7 +107,7 @@ impl TemplateRenderer for MiniJinjaRenderer {
     ) -> Result<String> {
         let path_str = template_path.to_str_checked()?;
         let template_name = template_path.file_name().and_then(|name| name.to_str());
-        self.render_internal(path_str, context, template_name)
+        self.render_internal(path_str, context, template_name, Some(AutoEscape::None))
     }
 
     fn execute_expression(
@@ -124,6 +128,7 @@ impl TemplateRenderer for MiniJinjaRenderer {
 mod tests {
     use crate::renderer::{interface::TemplateRenderer, MiniJinjaRenderer};
     use serde_json::json;
+    use std::path::Path;
 
     fn test_template(template: &str, expected: &str) {
         let renderer = MiniJinjaRenderer::new();
@@ -177,12 +182,25 @@ mod tests {
         let expected = "platform: ";
 
         let test_context = |context: serde_json::Value| {
-            let result = renderer.render_internal(template, &context, None).unwrap();
+            let result =
+                renderer.render_internal(template, &context, None, None).unwrap();
             assert_eq!(result, expected);
         };
 
         test_context(json!("simple_string"));
         test_context(json!(["first", "second"]));
         test_context(json!(42));
+    }
+
+    #[test]
+    fn render_path_keeps_yaml_segments_unescaped() {
+        let renderer = MiniJinjaRenderer::new();
+        let rendered = renderer
+            .render_path(
+                Path::new("charts/{{ service }}/values/affinity.yaml"),
+                &json!({ "service": "demo" }),
+            )
+            .unwrap();
+        assert_eq!(rendered, "charts/demo/values/affinity.yaml");
     }
 }
