@@ -1,0 +1,5 @@
+schemaVersion: v1
+questions:
+  service_name:
+    type: str
+    message: Service name

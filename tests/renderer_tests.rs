@@ -137,4 +137,14 @@ mod tests {
             None,
         );
     }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_windows_yaml_path_placeholders() {
+        run_and_assert(
+            "tests/templates/windows_yaml_placeholder",
+            "tests/expected/windows_yaml_placeholder",
+            Some("{\"service_name\":\"winapp\"}"),
+        );
+    }
 }
