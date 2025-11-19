@@ -76,7 +76,12 @@ pub struct Args {
 pub fn get_args() -> Args {
     Args::try_parse().unwrap_or_else(|e| {
         if e.kind() == ErrorKind::MissingRequiredArgument {
-            Args::command().help_template(HELP_TEMPLATE).print_help().unwrap();
+            let mut command = Args::command().help_template(HELP_TEMPLATE);
+            if let Err(print_err) = command.print_help() {
+                eprintln!("Failed to display help information: {print_err}");
+            } else {
+                println!();
+            }
             std::process::exit(exit_codes::FAILURE);
         } else {
             e.exit();
