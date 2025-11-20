@@ -102,9 +102,7 @@ impl<'a> AnswerCollector<'a> {
 
             if skip_user_prompt {
                 // Skip to the next question if an answer for this key is already provided
-                if answers.contains_key(key) {
-                    // Validate the pre-provided answer
-                    let answer = answers.get(key).unwrap();
+                if let Some(answer) = answers.get(key) {
                     let _answers = Value::Object(answers.clone());
                     if let Err(err) =
                         self.validate_answer(question, answer, self.engine, &_answers)
