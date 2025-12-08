@@ -64,6 +64,12 @@ jobs:
         env:
           RUST_LOG: trace
 
+      - name: Run Gitea integration tests (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo test --test gitea_integration_tests -- --ignored
+        env:
+          RUST_LOG: trace
+
       - name: Upload reports to codecov
         uses: codecov/codecov-action@v5
         with:
