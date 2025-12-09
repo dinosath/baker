@@ -577,6 +577,107 @@ mod tests {
 
         assert_eq!(result, vec!["python3".to_string(), "-u".to_string()]);
     }
+
+    #[test]
+    fn render_hook_runner_without_answers() {
+        let engine = crate::template::get_template_engine();
+        let tokens = vec!["python".to_string(), "-u".to_string()];
+
+        let result = render_hook_runner(&engine, &tokens, None).unwrap();
+
+        assert_eq!(result, vec!["python".to_string(), "-u".to_string()]);
+    }
+
+    #[test]
+    fn render_hook_runner_with_empty_tokens() {
+        let engine = crate::template::get_template_engine();
+        let tokens: Vec<String> = Vec::new();
+        let answers = json!({});
+
+        let result = render_hook_runner(&engine, &tokens, Some(&answers)).unwrap();
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn completion_message_dry_run() {
+        let output_path = PathBuf::from("/test/output");
+        let message = completion_message(true, &output_path);
+
+        assert!(message.contains("[DRY RUN]"));
+        assert!(message.contains("/test/output"));
+        assert!(message.contains("No files were actually created"));
+    }
+
+    #[test]
+    fn completion_message_normal_run() {
+        let output_path = PathBuf::from("/test/output");
+        let message = completion_message(false, &output_path);
+
+        assert!(!message.contains("[DRY RUN]"));
+        assert!(message.contains("/test/output"));
+        assert!(message.contains("successfully"));
+    }
+
+    #[test]
+    fn skip_all_prompts_skips_both_overwrite_and_hooks() {
+        let mut args = base_args();
+        args.skip_confirms = vec![SkipConfirm::All];
+        let runner = Runner::new(args);
+
+        assert!(runner.should_skip_overwrite_prompts());
+        assert!(runner.should_skip_hook_prompts());
+    }
+
+    #[test]
+    fn get_output_dir_allows_existing_when_force() {
+        let temp_dir = TempDir::new().unwrap();
+        let runner = Runner::new(base_args());
+        let result = runner.get_output_dir(temp_dir.path(), true, false).unwrap();
+        assert_eq!(result, temp_dir.path());
+    }
+
+    #[test]
+    fn get_output_dir_allows_new_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let new_path = temp_dir.path().join("new_dir");
+        let runner = Runner::new(base_args());
+        let result = runner.get_output_dir(&new_path, false, false).unwrap();
+        assert_eq!(result, new_path);
+    }
+
+    #[test]
+    fn runner_new_creates_instance() {
+        let args = base_args();
+        let runner = Runner::new(args);
+        // Verify the runner was created successfully
+        assert!(!runner.should_skip_overwrite_prompts());
+        assert!(!runner.should_skip_hook_prompts());
+    }
+
+    #[test]
+    fn hook_plan_struct_fields() {
+        let plan = HookPlan {
+            pre_hook_file: PathBuf::from("/hooks/pre"),
+            post_hook_file: PathBuf::from("/hooks/post"),
+            execute_hooks: true,
+            pre_hook_runner: vec!["sh".to_string()],
+            post_hook_runner: vec!["sh".to_string()],
+        };
+
+        assert_eq!(plan.pre_hook_file, PathBuf::from("/hooks/pre"));
+        assert_eq!(plan.post_hook_file, PathBuf::from("/hooks/post"));
+        assert!(plan.execute_hooks);
+        assert_eq!(plan.pre_hook_runner, vec!["sh".to_string()]);
+        assert_eq!(plan.post_hook_runner, vec!["sh".to_string()]);
+    }
+
+    #[test]
+    fn log_dry_run_action_logs_correctly() {
+        // This test verifies the function doesn't panic
+        let path = PathBuf::from("/test/path");
+        log_dry_run_action("Would create", &path);
+    }
 }
 
 /// Produces the user-facing completion string for the current run, accounting for dry-run mode.

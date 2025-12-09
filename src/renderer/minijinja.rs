@@ -203,4 +203,101 @@ mod tests {
             .unwrap();
         assert_eq!(rendered, "charts/demo/values/affinity.yaml");
     }
+
+    #[test]
+    fn test_add_template() {
+        let mut renderer = MiniJinjaRenderer::new();
+        let result = renderer.add_template("test_template", "Hello {{ name }}!");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_add_template_with_backslash_path() {
+        let mut renderer = MiniJinjaRenderer::new();
+        // Test that backslashes are normalized to forward slashes
+        let result = renderer.add_template("path\\to\\template", "Content");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_expression_true() {
+        let renderer = MiniJinjaRenderer::new();
+        let result =
+            renderer.execute_expression("use_db", &json!({"use_db": true})).unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    fn test_execute_expression_false() {
+        let renderer = MiniJinjaRenderer::new();
+        let result =
+            renderer.execute_expression("use_db", &json!({"use_db": false})).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_execute_expression_empty_returns_true() {
+        let renderer = MiniJinjaRenderer::new();
+        let result = renderer.execute_expression("", &json!({})).unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    fn test_execute_expression_comparison() {
+        let renderer = MiniJinjaRenderer::new();
+        let result =
+            renderer.execute_expression("count > 5", &json!({"count": 10})).unwrap();
+        assert!(result);
+
+        let result =
+            renderer.execute_expression("count > 5", &json!({"count": 3})).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_execute_expression_complex() {
+        let renderer = MiniJinjaRenderer::new();
+        let result = renderer
+            .execute_expression(
+                "use_db and db_type == 'postgres'",
+                &json!({"use_db": true, "db_type": "postgres"}),
+            )
+            .unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let renderer = MiniJinjaRenderer::default();
+        let result = renderer.render("test", &json!({}), None).unwrap();
+        assert_eq!(result, "test");
+    }
+
+    #[test]
+    fn test_platform_context_available() {
+        let renderer = MiniJinjaRenderer::new();
+        // Platform variables should be available in the default context
+        let result = renderer.render("OS: {{ platform.os }}", &json!({}), None).unwrap();
+        assert!(result.starts_with("OS: "));
+        assert!(!result.contains("{{"));
+    }
+
+    #[test]
+    fn test_render_with_template_name() {
+        let renderer = MiniJinjaRenderer::new();
+        let result = renderer
+            .render("Hello {{ name }}", &json!({"name": "World"}), Some("greeting"))
+            .unwrap();
+        assert_eq!(result, "Hello World");
+    }
+
+    #[test]
+    fn test_context_overrides_default() {
+        let renderer = MiniJinjaRenderer::new();
+        // User-provided context should override default platform context
+        let result = renderer
+            .render("{{ platform.os }}", &json!({"platform": {"os": "custom_os"}}), None)
+            .unwrap();
+        assert_eq!(result, "custom_os");
+    }
 }

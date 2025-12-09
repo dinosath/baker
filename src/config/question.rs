@@ -275,4 +275,177 @@ mod tests {
 
         assert!(rendered.default.as_bool().unwrap());
     }
+
+    #[test]
+    fn boolean_defaults_with_null_falls_back_to_false() {
+        let question = base_question(Type::Bool, json!(null));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("confirm", &answers, &renderer);
+
+        assert!(!rendered.default.as_bool().unwrap());
+    }
+
+    #[test]
+    fn structured_default_already_object_returns_as_is() {
+        let question = base_question(Type::Json, json!({"key": "value"}));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("settings", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!({"key": "value"}));
+    }
+
+    #[test]
+    fn structured_default_already_array_returns_as_is() {
+        let question = base_question(Type::Json, json!([1, 2, 3]));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("settings", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn yaml_string_default_parses_as_yaml() {
+        // Note: serde_yaml treats simple strings as valid YAML scalars
+        // So we test that a valid YAML string parses correctly
+        let question = base_question(Type::Yaml, json!("key: value\nlist:\n  - item1"));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("settings", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!({"key": "value", "list": ["item1"]}));
+    }
+
+    #[test]
+    fn structured_default_with_number_falls_back_to_empty_object() {
+        let question = base_question(Type::Json, json!(42));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("settings", &answers, &renderer);
+
+        assert_eq!(rendered.default, json!({}));
+    }
+
+    #[test]
+    fn evaluate_condition_with_empty_ask_if_returns_true() {
+        let question = base_question(Type::Str, json!("default"));
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("name", &answers, &renderer);
+
+        assert!(rendered.ask_if);
+    }
+
+    #[test]
+    fn evaluate_condition_with_false_expression() {
+        let mut question = base_question(Type::Str, json!("default"));
+        question.ask_if = "false".to_string();
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("name", &answers, &renderer);
+
+        assert!(!rendered.ask_if);
+    }
+
+    #[test]
+    fn evaluate_condition_based_on_answers() {
+        let mut question = base_question(Type::Str, json!("default"));
+        question.ask_if = "use_db".to_string();
+        let answers = json!({"use_db": true});
+        let renderer = build_renderer();
+
+        let rendered = question.render("db_name", &answers, &renderer);
+
+        assert!(rendered.ask_if);
+    }
+
+    #[test]
+    fn question_rendered_debug_impl() {
+        let rendered = QuestionRendered {
+            ask_if: true,
+            default: json!("test"),
+            help: "help text".to_string(),
+            r#type: QuestionType::Text,
+        };
+        let debug_str = format!("{:?}", rendered);
+        assert!(debug_str.contains("QuestionRendered"));
+        assert!(debug_str.contains("ask_if"));
+        assert!(debug_str.contains("true"));
+    }
+
+    #[test]
+    fn into_question_type_multiple_choice() {
+        let mut question = base_question(Type::Str, json!([]));
+        question.choices = vec!["a".to_string(), "b".to_string()];
+        question.multiselect = true;
+
+        assert_eq!(question.into_question_type(), QuestionType::MultipleChoice);
+    }
+
+    #[test]
+    fn into_question_type_single_choice() {
+        let mut question = base_question(Type::Str, json!(""));
+        question.choices = vec!["a".to_string(), "b".to_string()];
+        question.multiselect = false;
+
+        assert_eq!(question.into_question_type(), QuestionType::SingleChoice);
+    }
+
+    #[test]
+    fn into_question_type_text() {
+        let question = base_question(Type::Str, json!(""));
+        assert_eq!(question.into_question_type(), QuestionType::Text);
+    }
+
+    #[test]
+    fn into_question_type_boolean() {
+        let question = base_question(Type::Bool, json!(false));
+        assert_eq!(question.into_question_type(), QuestionType::Boolean);
+    }
+
+    #[test]
+    fn into_question_type_json() {
+        let question = base_question(Type::Json, json!({}));
+        assert_eq!(question.into_question_type(), QuestionType::Json);
+    }
+
+    #[test]
+    fn into_question_type_yaml() {
+        let question = base_question(Type::Yaml, json!({}));
+        assert_eq!(question.into_question_type(), QuestionType::Yaml);
+    }
+
+    #[test]
+    fn render_help_text_with_template() {
+        let mut question = base_question(Type::Str, json!(""));
+        question.help = "Enter name for {{ project }}".to_string();
+        let answers = json!({"project": "MyProject"});
+        let renderer = build_renderer();
+
+        let rendered = question.render("name", &answers, &renderer);
+
+        assert_eq!(rendered.help, "Enter name for MyProject");
+    }
+
+    #[test]
+    fn render_help_text_invalid_template_falls_back() {
+        let mut question = base_question(Type::Str, json!(""));
+        question.help = "Help text with {{ invalid".to_string();
+        let answers = json!({});
+        let renderer = build_renderer();
+
+        let rendered = question.render("name", &answers, &renderer);
+
+        // Falls back to original help text on error
+        assert_eq!(rendered.help, "Help text with {{ invalid");
+    }
 }

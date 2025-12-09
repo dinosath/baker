@@ -184,4 +184,142 @@ mod tests {
 
         assert!(output.contains("windows_runner"));
     }
+
+    #[test]
+    fn run_hook_returns_none_when_script_not_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let nonexistent_path = temp_dir.path().join("nonexistent_hook.sh");
+
+        let result =
+            run_hook(temp_dir.path(), temp_dir.path(), &nonexistent_path, None, &[]);
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_hook_with_answers_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let script_path = temp_dir.path().join("hook.sh");
+        // Script reads from stdin and outputs it
+        File::create(&script_path).unwrap().write_all(b"#!/bin/sh\ncat").unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let answers = serde_json::json!({"name": "test_value"});
+        let result =
+            run_hook(temp_dir.path(), temp_dir.path(), &script_path, Some(&answers), &[]);
+
+        assert!(result.is_ok());
+        let output = result.unwrap().unwrap();
+        assert!(output.contains("test_value"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_hook_with_multiple_runner_args() {
+        let temp_dir = TempDir::new().unwrap();
+        let script_path = temp_dir.path().join("hook.sh");
+        File::create(&script_path).unwrap().write_all(b"echo 'multi_arg_test'").unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        // Note: This tests the runner with arguments
+        let output = run_hook(
+            temp_dir.path(),
+            temp_dir.path(),
+            &script_path,
+            None,
+            &["sh".to_string()],
+        )
+        .expect("hook execution")
+        .expect("stdout");
+
+        assert!(output.contains("multi_arg_test"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_hook_failure_returns_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let script_path = temp_dir.path().join("failing_hook.sh");
+        File::create(&script_path).unwrap().write_all(b"#!/bin/sh\nexit 1").unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let result = run_hook(temp_dir.path(), temp_dir.path(), &script_path, None, &[]);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, Error::HookExecutionError { .. }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_hook_that_ignores_stdin() {
+        let temp_dir = TempDir::new().unwrap();
+        let script_path = temp_dir.path().join("ignore_stdin.sh");
+        // Script ignores stdin completely
+        File::create(&script_path)
+            .unwrap()
+            .write_all(b"#!/bin/sh\necho 'ignored stdin'")
+            .unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let answers = serde_json::json!({"key": "value"});
+        let result =
+            run_hook(temp_dir.path(), temp_dir.path(), &script_path, Some(&answers), &[]);
+
+        assert!(result.is_ok());
+        let output = result.unwrap().unwrap();
+        assert!(output.contains("ignored stdin"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_hook_with_empty_runner() {
+        let temp_dir = TempDir::new().unwrap();
+        let script_path = temp_dir.path().join("executable_hook.sh");
+        File::create(&script_path)
+            .unwrap()
+            .write_all(b"#!/bin/sh\necho 'direct_execution'")
+            .unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let result = run_hook(
+            temp_dir.path(),
+            temp_dir.path(),
+            &script_path,
+            None,
+            &[], // Empty runner means direct execution
+        );
+
+        assert!(result.is_ok());
+        let output = result.unwrap().unwrap();
+        assert!(output.contains("direct_execution"));
+    }
+
+    #[test]
+    fn test_output_struct_serialization() {
+        let output = Output {
+            template_dir: "/path/to/template",
+            output_dir: "/path/to/output",
+            answers: Some(&serde_json::json!({"key": "value"})),
+        };
+
+        let serialized = serde_json::to_string(&output).unwrap();
+        assert!(serialized.contains("/path/to/template"));
+        assert!(serialized.contains("/path/to/output"));
+        assert!(serialized.contains("key"));
+        assert!(serialized.contains("value"));
+    }
+
+    #[test]
+    fn test_output_struct_serialization_without_answers() {
+        let output =
+            Output { template_dir: "/template", output_dir: "/output", answers: None };
+
+        let serialized = serde_json::to_string(&output).unwrap();
+        assert!(serialized.contains("/template"));
+        assert!(serialized.contains("/output"));
+        assert!(serialized.contains("null"));
+    }
 }

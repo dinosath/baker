@@ -210,4 +210,196 @@ questions: {}"#;
         let Config::V1(cfg) = config;
         assert_eq!(cfg.import_root, Some("/usr/local/templates".to_string()));
     }
+
+    #[test]
+    fn validate_accepts_valid_template_suffix() {
+        let raw = r#"schemaVersion: v1
+template_suffix: ".j2"
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_empty_template_suffix() {
+        let raw = r#"schemaVersion: v1
+template_suffix: ""
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        let result = cfg.validate();
+        assert!(result.is_err());
+        assert!(format!("{}", result.unwrap_err()).contains("must not be empty"));
+    }
+
+    #[test]
+    fn validate_rejects_template_suffix_without_dot() {
+        let raw = r#"schemaVersion: v1
+template_suffix: "j2"
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        let result = cfg.validate();
+        assert!(result.is_err());
+        assert!(format!("{}", result.unwrap_err()).contains("must start with '.'"));
+    }
+
+    #[test]
+    fn validate_rejects_template_suffix_with_only_dot() {
+        let raw = r#"schemaVersion: v1
+template_suffix: "."
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        let result = cfg.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_config_from_json_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("baker.json");
+        std::fs::write(&config_path, r#"{"schemaVersion": "v1", "questions": {}}"#)
+            .unwrap();
+
+        let config = Config::load_config(temp_dir.path()).unwrap();
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.template_suffix, DEFAULT_TEMPLATE_SUFFIX);
+    }
+
+    #[test]
+    fn load_config_from_yaml_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("baker.yaml");
+        std::fs::write(&config_path, "schemaVersion: v1\nquestions: {}").unwrap();
+
+        let config = Config::load_config(temp_dir.path()).unwrap();
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.template_suffix, DEFAULT_TEMPLATE_SUFFIX);
+    }
+
+    #[test]
+    fn load_config_from_yml_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("baker.yml");
+        std::fs::write(&config_path, "schemaVersion: v1\nquestions: {}").unwrap();
+
+        let config = Config::load_config(temp_dir.path()).unwrap();
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.template_suffix, DEFAULT_TEMPLATE_SUFFIX);
+    }
+
+    #[test]
+    fn load_config_returns_error_when_no_config_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let result = Config::load_config(temp_dir.path());
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Configuration file not found"));
+    }
+
+    #[test]
+    fn load_config_prefers_json_over_yaml() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        // Create both json and yaml files
+        std::fs::write(
+            temp_dir.path().join("baker.json"),
+            r#"{"schemaVersion": "v1", "template_suffix": ".json.j2", "questions": {}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            temp_dir.path().join("baker.yaml"),
+            "schemaVersion: v1\ntemplate_suffix: \".yaml.j2\"\nquestions: {}",
+        )
+        .unwrap();
+
+        let config = Config::load_config(temp_dir.path()).unwrap();
+        let Config::V1(cfg) = config;
+        // JSON should be loaded first based on CONFIG_FILENAMES order
+        assert_eq!(cfg.template_suffix, ".json.j2");
+    }
+
+    #[test]
+    fn config_v1_debug_impl() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        let debug_str = format!("{:?}", cfg);
+        assert!(debug_str.contains("ConfigV1"));
+        assert!(debug_str.contains("template_suffix"));
+    }
+
+    #[test]
+    fn config_enum_debug_impl() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("V1"));
+    }
+
+    #[test]
+    fn default_template_globs_is_empty() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert!(cfg.template_globs.is_empty());
+    }
+
+    #[test]
+    fn template_globs_parses_correctly() {
+        let raw = r#"schemaVersion: v1
+template_globs:
+  - "**/*.j2"
+  - "includes/*.html"
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.template_globs.len(), 2);
+        assert_eq!(cfg.template_globs[0], "**/*.j2");
+        assert_eq!(cfg.template_globs[1], "includes/*.html");
+    }
+
+    #[test]
+    fn default_loop_separator() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.loop_separator, DEFAULT_LOOP_SEPARATOR);
+    }
+
+    #[test]
+    fn default_loop_content_separator() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.loop_content_separator, DEFAULT_LOOP_CONTENT_SEPARATOR);
+    }
+
+    #[test]
+    fn custom_hook_filenames() {
+        let raw = r#"schemaVersion: v1
+pre_hook_filename: "setup.sh"
+post_hook_filename: "cleanup.sh"
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.pre_hook_filename, "setup.sh");
+        assert_eq!(cfg.post_hook_filename, "cleanup.sh");
+    }
+
+    #[test]
+    fn default_hook_filenames() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert_eq!(cfg.pre_hook_filename, DEFAULT_PRE_HOOK);
+        assert_eq!(cfg.post_hook_filename, DEFAULT_POST_HOOK);
+    }
 }

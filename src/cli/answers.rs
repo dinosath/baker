@@ -541,4 +541,196 @@ mod tests {
             .test_validate_answer(&question, &answer, &engine, &answers)
             .is_ok());
     }
+
+    #[test]
+    fn test_parse_string_to_json_valid_object() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let json_str = r#"{"name": "test", "value": 42}"#.to_string();
+        let result = collector.parse_string_to_json(json_str);
+        assert!(result.is_ok());
+        let map = result.unwrap();
+        assert_eq!(map.get("name"), Some(&json!("test")));
+        assert_eq!(map.get("value"), Some(&json!(42)));
+    }
+
+    #[test]
+    fn test_parse_string_to_json_valid_array_returns_empty() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        // Arrays are not objects, should return empty map
+        let json_str = r#"[1, 2, 3]"#.to_string();
+        let result = collector.parse_string_to_json(json_str);
+        assert!(result.is_ok());
+        let map = result.unwrap();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_parse_string_to_json_primitive_returns_empty() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        // Primitives are not objects, should return empty map
+        let json_str = r#""just a string""#.to_string();
+        let result = collector.parse_string_to_json(json_str);
+        assert!(result.is_ok());
+        let map = result.unwrap();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_parse_string_to_json_invalid_json() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let json_str = r#"{invalid json}"#.to_string();
+        let result = collector.parse_string_to_json(json_str);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_from_valid_content() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let content = b"Hello, World!";
+        let cursor = std::io::Cursor::new(content);
+        let result = collector.read_from(cursor);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Hello, World!");
+    }
+
+    #[test]
+    fn test_read_from_empty_content() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let content: &[u8] = b"";
+        let cursor = std::io::Cursor::new(content);
+        let result = collector.read_from(cursor);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "");
+    }
+
+    #[test]
+    fn test_answer_collector_new() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, true, &temp_dir);
+        assert!(collector.non_interactive);
+    }
+
+    #[test]
+    fn test_validation_error_debug() {
+        let json_err = ValidationError::JsonSchema("test json error".to_string());
+        let debug_str = format!("{:?}", json_err);
+        assert!(debug_str.contains("JsonSchema"));
+        assert!(debug_str.contains("test json error"));
+
+        let field_err = ValidationError::FieldValidation("test field error".to_string());
+        let debug_str = format!("{:?}", field_err);
+        assert!(debug_str.contains("FieldValidation"));
+        assert!(debug_str.contains("test field error"));
+    }
+
+    #[test]
+    fn test_validate_answer_yaml_type_with_schema() {
+        let question = Question {
+            help: String::new(),
+            r#type: Type::Yaml,
+            default: serde_json::Value::Null,
+            choices: vec![],
+            multiselect: false,
+            secret: None,
+            ask_if: String::new(),
+            schema: Some(r#"{"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]}"#.to_string()),
+            schema_file: None,
+            validation: Validation {
+                condition: "true".to_string(),
+                error_message: "error".to_string(),
+            },
+        };
+
+        let answer = json!({"key": "value"});
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let answers = json!({});
+        assert!(collector
+            .test_validate_answer(&question, &answer, &engine, &answers)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_validate_answer_yaml_type_invalid() {
+        let question = Question {
+            help: String::new(),
+            r#type: Type::Yaml,
+            default: serde_json::Value::Null,
+            choices: vec![],
+            multiselect: false,
+            secret: None,
+            ask_if: String::new(),
+            schema: Some(r#"{"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]}"#.to_string()),
+            schema_file: None,
+            validation: Validation {
+                condition: "true".to_string(),
+                error_message: "error".to_string(),
+            },
+        };
+
+        let answer = json!({"key": 123}); // Invalid: key should be string
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let answers = json!({});
+        assert!(matches!(
+            collector.test_validate_answer(&question, &answer, &engine, &answers),
+            Err(ValidationError::JsonSchema(_))
+        ));
+    }
+
+    #[test]
+    fn test_validate_answer_bool_type() {
+        let question = Question {
+            help: String::new(),
+            r#type: Type::Bool,
+            default: serde_json::Value::Bool(false),
+            choices: vec![],
+            multiselect: false,
+            secret: None,
+            ask_if: String::new(),
+            schema: None,
+            schema_file: None,
+            validation: Validation {
+                condition: "true".to_string(),
+                error_message: "error".to_string(),
+            },
+        };
+
+        let answer = json!(true);
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let answers = json!({});
+        assert!(collector
+            .test_validate_answer(&question, &answer, &engine, &answers)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_to_json_nested_object() {
+        let engine = get_template_engine();
+        let temp_dir = std::env::temp_dir();
+        let collector = AnswerCollector::new(&engine, false, &temp_dir);
+        let json_str = r#"{"outer": {"inner": "value"}, "list": [1, 2, 3]}"#.to_string();
+        let result = collector.parse_string_to_json(json_str);
+        assert!(result.is_ok());
+        let map = result.unwrap();
+        assert!(map.contains_key("outer"));
+        assert!(map.contains_key("list"));
+    }
 }

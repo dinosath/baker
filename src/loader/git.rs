@@ -67,7 +67,7 @@ impl<S: AsRef<str>> GitLoader<S> {
     pub fn is_git_url(s: &str) -> bool {
         // Try to parse as standard URL first
         if let Ok(url) = Url::parse(s) {
-            return matches!(url.scheme(), "https" | "git" | "ssh");
+            return matches!(url.scheme(), "http" | "https" | "git" | "ssh");
         }
 
         // Check for SSH format: git@host:path or user@host:path
@@ -163,6 +163,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_is_git_url_http() {
+        assert!(GitLoader::<&str>::is_git_url("http://localhost:3000/user/repo"));
+        assert!(GitLoader::<&str>::is_git_url("http://localhost:3000/user/repo.git"));
+        assert!(GitLoader::<&str>::is_git_url("http://192.168.1.1/user/repo"));
+        assert!(GitLoader::<&str>::is_git_url("http://gitea.local/user/repo.git"));
+    }
+
+    #[test]
     fn test_is_git_url_https() {
         assert!(GitLoader::<&str>::is_git_url("https://github.com/user/repo"));
         assert!(GitLoader::<&str>::is_git_url("https://github.com/user/repo.git"));
@@ -240,5 +248,116 @@ mod tests {
         assert_eq!(GitLoader::<String>::extract_repo_name("invalid-url"), "invalid-url");
         assert_eq!(GitLoader::<String>::extract_repo_name(""), "template");
         assert_eq!(GitLoader::<String>::extract_repo_name("git@host:"), "template");
+    }
+
+    #[test]
+    fn test_git_loader_new() {
+        let loader = GitLoader::new("https://github.com/user/repo", false);
+        assert_eq!(loader.repo, "https://github.com/user/repo");
+        assert!(!loader.skip_overwrite_check);
+
+        let loader_skip = GitLoader::new("git@github.com:user/repo", true);
+        assert_eq!(loader_skip.repo, "git@github.com:user/repo");
+        assert!(loader_skip.skip_overwrite_check);
+    }
+
+    #[test]
+    fn test_extract_repo_name_with_trailing_slash() {
+        assert_eq!(
+            GitLoader::<String>::extract_repo_name("https://github.com/user/repo/"),
+            "template"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_git_protocol() {
+        assert_eq!(
+            GitLoader::<String>::extract_repo_name("git://github.com/user/myrepo.git"),
+            "myrepo"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_ssh_with_subgroups() {
+        assert_eq!(
+            GitLoader::<String>::extract_repo_name(
+                "git@gitlab.com:group/subgroup/repo.git"
+            ),
+            "repo"
+        );
+    }
+
+    #[test]
+    fn test_is_git_url_empty_string() {
+        assert!(!GitLoader::<&str>::is_git_url(""));
+    }
+
+    #[test]
+    fn test_is_git_url_file_protocol() {
+        assert!(!GitLoader::<&str>::is_git_url("file:///path/to/repo"));
+    }
+
+    #[test]
+    fn test_is_git_url_ftp_protocol() {
+        assert!(!GitLoader::<&str>::is_git_url("ftp://example.com/repo"));
+    }
+
+    #[test]
+    fn test_is_git_url_ssh_explicit_protocol() {
+        assert!(GitLoader::<&str>::is_git_url("ssh://git@github.com/user/repo.git"));
+    }
+
+    #[test]
+    fn test_is_git_url_with_port() {
+        assert!(GitLoader::<&str>::is_git_url("https://github.com:443/user/repo"));
+        assert!(GitLoader::<&str>::is_git_url("http://localhost:3000/user/repo.git"));
+    }
+
+    #[test]
+    fn test_is_git_url_special_characters_in_path() {
+        assert!(GitLoader::<&str>::is_git_url(
+            "https://github.com/user/my-repo_name.git"
+        ));
+    }
+
+    #[test]
+    fn test_extract_repo_name_special_characters() {
+        assert_eq!(
+            GitLoader::<String>::extract_repo_name(
+                "https://github.com/user/my-repo_name.git"
+            ),
+            "my-repo_name"
+        );
+    }
+
+    #[test]
+    fn test_is_git_url_ssh_without_path_separator() {
+        // SSH format requires path with /
+        assert!(!GitLoader::<&str>::is_git_url("git@github.com:repo"));
+    }
+
+    #[test]
+    fn test_extract_repo_name_only_git_suffix() {
+        assert_eq!(GitLoader::<String>::extract_repo_name(".git"), "template");
+    }
+
+    #[test]
+    fn test_is_git_url_malformed() {
+        assert!(!GitLoader::<&str>::is_git_url("not a url at all"));
+        assert!(!GitLoader::<&str>::is_git_url("://missing-scheme"));
+        assert!(!GitLoader::<&str>::is_git_url("http://"));
+    }
+
+    #[test]
+    fn test_git_loader_with_string_type() {
+        let repo = String::from("https://github.com/test/repo");
+        let loader = GitLoader::new(repo, false);
+        assert_eq!(loader.repo, "https://github.com/test/repo");
+    }
+
+    #[test]
+    fn test_git_loader_with_str_reference() {
+        let loader = GitLoader::new("https://github.com/test/repo", true);
+        assert_eq!(loader.repo, "https://github.com/test/repo");
     }
 }
