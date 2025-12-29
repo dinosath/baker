@@ -1,3 +1,8 @@
+//! Hook execution functionality for Baker templates.
+//!
+//! This module provides the ability to execute pre and post hooks
+//! during template generation.
+
 use serde::Serialize;
 use std::borrow::Cow;
 use std::io::{BufReader, Read, Write};
@@ -10,7 +15,7 @@ use crate::error::{Error, Result};
 ///
 /// This data is serialized to JSON and passed to hook scripts via stdin.
 #[derive(Serialize)]
-struct Output<'a> {
+struct HookInput<'a> {
     /// Absolute path to the template directory
     pub template_dir: &'a str,
     /// Absolute path to the output directory
@@ -24,8 +29,9 @@ struct Output<'a> {
 /// # Arguments
 /// * `template_dir` - Path to the template directory
 /// * `output_dir` - Path to the output directory
-/// * `script_path` - Path to the hook script to execute
-/// * `context` - Template context data
+/// * `hook_path` - Path to the hook script to execute
+/// * `answers` - Template context data
+/// * `runner` - Optional command runner (e.g., `["sh"]` or `["python"]`)
 ///
 /// # Returns
 /// * `Result<Option<String>>` - Success or error status of hook execution, with stdout content
@@ -34,6 +40,20 @@ struct Output<'a> {
 /// - Hook scripts receive context data as JSON via stdin
 /// - Hooks must be executable files
 /// - Non-zero exit codes from hooks are treated as errors
+///
+/// # Example
+/// ```no_run
+/// use baker::hooks::run_hook;
+/// use std::path::Path;
+///
+/// let result = run_hook(
+///     Path::new("/template"),
+///     Path::new("/output"),
+///     Path::new("/template/hooks/pre.sh"),
+///     None,
+///     &["sh".to_string()],
+/// );
+/// ```
 pub fn run_hook<P: AsRef<Path>>(
     template_dir: P,
     output_dir: P,
@@ -46,10 +66,10 @@ pub fn run_hook<P: AsRef<Path>>(
     let template_dir = template_dir.as_ref().display().to_string();
     let output_dir = output_dir.as_ref().display().to_string();
 
-    let output = Output { template_dir: &template_dir, output_dir: &output_dir, answers };
+    let input = HookInput { template_dir: &template_dir, output_dir: &output_dir, answers };
 
     // Properly handle serialization errors
-    let output_data = serde_json::to_vec(&output).map_err(Error::JSONParseError)?;
+    let input_data = serde_json::to_vec(&input).map_err(Error::JSONParseError)?;
 
     if !hook_path.exists() {
         return Ok(None);
@@ -86,7 +106,7 @@ pub fn run_hook<P: AsRef<Path>>(
         };
 
         // Write context data to stdin
-        if let Err(e) = stdin.write_all(&output_data) {
+        if let Err(e) = stdin.write_all(&input_data) {
             handle_write_error(e, "write context data to hook stdin");
         } else if let Err(e) = stdin.write_all(b"\n") {
             handle_write_error(e, "write newline to hook stdin");

@@ -1,4 +1,6 @@
-use crate::{cli::SkipConfirm, config::ConfigV1};
+//! Generation context for template processing.
+
+use crate::{config::ConfigV1, types::SkipConfirm};
 use std::path::PathBuf;
 
 /// Shared state describing a single generation run.

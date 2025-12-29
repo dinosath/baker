@@ -1,33 +1,36 @@
-//! # Baker - Project Scaffolding Tool
+//! # Baker Core
 //!
-//! Baker is a powerful template-based project generator that helps you create
-//! new projects from predefined templates with dynamic content generation.
+//! Core library for the Baker project scaffolding tool.
 //!
-//! ## Core Components
+//! This crate contains all the core components used for template processing,
+//! configuration management, and project generation.
 //!
-//! - **CLI**: Command-line interface and argument parsing
-//! - **Configuration**: Template configuration management and validation
-//! - **Templates**: Template processing and rendering engine
-//! - **Prompts**: Interactive user input handling
-//! - **Loaders**: Template source management (local/git)
+//! ## Modules
 //!
-//! ## Quick Start
-//!
-//! ```ignore
-//! use baker::cli::{get_args, run};
-//!
-//! let args = get_args();
-//! run(args)?;
-//! ```
-
-/// Handles argument parsing.
-pub mod cli;
+//! - [`config`] - Configuration handling for Baker templates
+//! - [`template`] - Core template processing orchestration
+//! - [`renderer`] - Template parsing and rendering functionality
+//! - [`prompt`] - User input and interaction handling
+//! - [`loader`] - Template source management (local/git)
+//! - [`context`] - Generation context for template processing
+//! - [`hooks`] - Hook script execution
+//! - [`error`] - Custom error types
+//! - [`constants`] - Application-wide constants
+//! - [`ignore`] - .bakerignore file processing
+//! - [`ext`] - Extension traits for built-in Rust types
+//! - [`types`] - Common types
 
 /// Application-wide constants.
 pub mod constants;
 
+/// Common types used across the crate.
+pub mod types;
+
 /// Defines custom error types.
 pub mod error;
+
+/// Generation context for template processing.
+pub mod context;
 
 /// Processes .bakerignore files to exclude specific paths.
 pub mod ignore;
@@ -46,6 +49,9 @@ pub mod template;
 
 /// Configuration handling for Baker templates.
 pub mod config;
+
+/// Hook script execution.
+pub mod hooks;
 
 /// Extension traits for built-in Rust types.
 pub mod ext;
