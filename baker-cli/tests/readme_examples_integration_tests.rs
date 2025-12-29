@@ -1,4 +1,4 @@
-use baker::cli::{run, Args, SkipConfirm::All};
+use baker_cli::{run, Args, SkipConfirm::All};
 use test_log::test;
 mod utils;
 use utils::run_and_assert;
@@ -183,8 +183,9 @@ fn test_template_with_different_suffix() {
 fn test_nested_answer_context() {
     // Test that previous answers are available in later questions
     let tmp_dir = tempfile::tempdir().unwrap();
+    let template_path = utils::resolve_path("examples/demo");
     let args = Args {
-        template: "examples/demo".to_string(),
+        template: template_path.to_string_lossy().to_string(),
         output_dir: tmp_dir.path().to_path_buf(),
         force: true,
         verbose: 2,

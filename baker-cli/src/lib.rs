@@ -1,7 +1,9 @@
+//! # Baker CLI
+//!
+//! Command-line interface for the Baker project scaffolding tool.
+
 pub mod answers;
 pub mod args;
-pub mod context;
-pub mod hooks;
 pub mod processor;
 pub mod runner;
 

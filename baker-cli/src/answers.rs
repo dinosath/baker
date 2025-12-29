@@ -1,4 +1,4 @@
-use crate::{
+use baker::{
     config::{ConfigV1, IntoQuestionType, Question, QuestionRendered, QuestionType},
     constants::STDIN_INDICATOR,
     error::{Error, Result},
@@ -97,7 +97,7 @@ impl<'a> AnswerCollector<'a> {
         &self,
         answers: &mut Map<String, Value>,
         key: &str,
-        question: &crate::config::Question,
+        question: &baker::config::Question,
     ) -> Result<()> {
         loop {
             let QuestionRendered { help, default, ask_if, .. } =
@@ -248,7 +248,7 @@ impl<'a> AnswerCollector<'a> {
         let schema_value: serde_json::Value = serde_json::from_str(schema)?;
 
         let validator = jsonschema::validator_for(&schema_value).map_err(|e| {
-            crate::error::Error::Other(anyhow::anyhow!("Invalid JSON schema: {}", e))
+            baker::error::Error::Other(anyhow::anyhow!("Invalid JSON schema: {}", e))
         })?;
 
         let errors: Vec<String> = validator
@@ -257,7 +257,7 @@ impl<'a> AnswerCollector<'a> {
             .collect();
 
         if !errors.is_empty() {
-            return Err(crate::error::Error::Other(anyhow::anyhow!(
+            return Err(baker::error::Error::Other(anyhow::anyhow!(
                 "Validation failed: {}",
                 errors.join("\n")
             )));
@@ -293,8 +293,8 @@ impl<'a> AnswerCollector<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Type, Validation};
-    use crate::template::get_template_engine;
+    use baker::config::{Type, Validation};
+    use baker::template::get_template_engine;
     use serde_json::json;
 
     #[test]

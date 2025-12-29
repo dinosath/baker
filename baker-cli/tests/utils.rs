@@ -1,9 +1,35 @@
-use baker::cli::SkipConfirm::All;
-use baker::cli::{run, Args};
+use baker_cli::SkipConfirm::All;
+use baker_cli::{run, Args};
 use log::debug;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+/// Returns the workspace root directory (parent of baker-cli).
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("Failed to get workspace root")
+        .to_path_buf()
+}
+
+/// Returns the baker-cli crate directory.
+fn cli_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// Resolves a path that may be relative to workspace root or cli root.
+/// - Paths starting with "examples/" are relative to workspace root
+/// - Paths starting with "tests/" are relative to cli root
+pub fn resolve_path(path: &str) -> PathBuf {
+    if path.starts_with("examples/") {
+        workspace_root().join(path)
+    } else if path.starts_with("tests/") {
+        cli_root().join(path)
+    } else {
+        workspace_root().join(path)
+    }
+}
 
 /// Prints a diff of files and their contents between two directories.
 /// Shows files only present in one directory and content differences for files present in both.
@@ -91,13 +117,16 @@ pub fn print_dir_diff(dir1: &Path, dir2: &Path) {
 /// prints any differences, and asserts that the directories are identical.
 ///
 /// # Arguments
-/// * `template` - Path to the template directory.
-/// * `expected_dir` - Path to the directory with expected output.
+/// * `template` - Path to the template directory (relative to workspace root or cli root).
+/// * `expected_dir` - Path to the directory with expected output (relative to workspace root or cli root).
 /// * `answers` - Optional answers for non-interactive prompts.
 pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>) {
+    let template_path = resolve_path(template);
+    let expected_path = resolve_path(expected_dir);
+
     let tmp_dir = tempfile::tempdir().unwrap();
     let args = Args {
-        template: template.to_string(),
+        template: template_path.to_string_lossy().to_string(),
         output_dir: tmp_dir.path().to_path_buf(),
         force: true,
         verbose: 2,
@@ -108,11 +137,11 @@ pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>)
         dry_run: false,
     };
     run(args).unwrap();
-    let result = dir_diff::is_different(tmp_dir.path(), expected_dir);
+    let result = dir_diff::is_different(tmp_dir.path(), &expected_path);
     match result {
         Ok(different) => {
             if different {
-                print_dir_diff(tmp_dir.path(), expected_dir.as_ref());
+                print_dir_diff(tmp_dir.path(), &expected_path);
                 panic!("Directories differ. See above for details.");
             }
         }
@@ -120,5 +149,5 @@ pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>)
             debug!("Error comparing directories: {e}");
         }
     }
-    assert!(!dir_diff::is_different(tmp_dir.path(), expected_dir).unwrap());
+    assert!(!dir_diff::is_different(tmp_dir.path(), &expected_path).unwrap());
 }

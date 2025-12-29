@@ -1,4 +1,4 @@
-use crate::constants::{exit_codes, verbosity};
+use baker::constants::{exit_codes, verbosity};
 use clap::{error::ErrorKind, CommandFactory, Parser, ValueEnum};
 use log::LevelFilter;
 use std::fmt::Display;
@@ -31,6 +31,16 @@ impl Display for SkipConfirm {
             SkipConfirm::Hooks => "hooks",
         };
         write!(f, "{s}")
+    }
+}
+
+impl From<SkipConfirm> for baker::types::SkipConfirm {
+    fn from(value: SkipConfirm) -> Self {
+        match value {
+            SkipConfirm::All => baker::types::SkipConfirm::All,
+            SkipConfirm::Overwrite => baker::types::SkipConfirm::Overwrite,
+            SkipConfirm::Hooks => baker::types::SkipConfirm::Hooks,
+        }
     }
 }
 
@@ -109,7 +119,7 @@ mod tests {
 
     #[test]
     fn maps_verbose_flags_to_log_filters() {
-        use crate::constants::verbosity;
+        use baker::constants::verbosity;
         assert_eq!(get_log_level_from_verbose(verbosity::OFF), LevelFilter::Error);
         assert_eq!(get_log_level_from_verbose(verbosity::INFO), LevelFilter::Info);
         assert_eq!(get_log_level_from_verbose(verbosity::DEBUG), LevelFilter::Debug);

@@ -1,10 +1,9 @@
-use crate::{
-    cli::{
-        answers::AnswerCollector, context::GenerationContext, hooks::run_hook,
-        processor::FileProcessor, Args, SkipConfirm,
-    },
+use crate::{answers::AnswerCollector, processor::FileProcessor, Args, SkipConfirm};
+use baker::{
     config::{Config, ConfigV1},
+    context::GenerationContext,
     error::{Error, Result},
+    hooks::run_hook,
     ignore::parse_bakerignore_file,
     loader::get_template,
     prompt::confirm,
@@ -70,7 +69,7 @@ impl Runner {
             template_root,
             output_root,
             config,
-            self.args.skip_confirms.clone(),
+            self.args.skip_confirms.iter().map(|s| (*s).into()).collect(),
             self.args.dry_run,
         ))
     }
@@ -87,7 +86,7 @@ impl Runner {
     fn load_and_validate_config(
         &self,
         template_root: &PathBuf,
-    ) -> Result<crate::config::ConfigV1> {
+    ) -> Result<baker::config::ConfigV1> {
         let config = Config::load_config(template_root)?;
         let Config::V1(config) = config;
         config.validate()?;
@@ -97,7 +96,7 @@ impl Runner {
     fn prepare_hooks(
         &self,
         context: &GenerationContext,
-        engine: &dyn crate::renderer::TemplateRenderer,
+        engine: &dyn baker::renderer::TemplateRenderer,
     ) -> Result<HookPlan> {
         let config = context.config();
         let pre_hook_filename = engine.render(
@@ -179,8 +178,8 @@ impl Runner {
     /// Collects answers from all available sources
     fn gather_answers(
         &self,
-        config: &crate::config::ConfigV1,
-        engine: &dyn crate::renderer::TemplateRenderer,
+        config: &baker::config::ConfigV1,
+        engine: &dyn baker::renderer::TemplateRenderer,
         pre_hook_output: Option<String>,
         template_root: &Path,
     ) -> Result<serde_json::Value> {
@@ -198,7 +197,7 @@ impl Runner {
     fn process_templates(
         &self,
         context: &GenerationContext,
-        engine: &dyn crate::renderer::TemplateRenderer,
+        engine: &dyn baker::renderer::TemplateRenderer,
     ) -> Result<()> {
         let bakerignore = parse_bakerignore_file(context.template_root())?;
 
@@ -575,7 +574,7 @@ mod tests {
 
     #[test]
     fn render_hook_runner_renders_tokens_with_answers() {
-        let engine = crate::template::get_template_engine();
+        let engine = baker::template::get_template_engine();
         let tokens = vec!["python{{ version }}".to_string(), "-u".to_string()];
         let answers = json!({ "version": "3" });
 

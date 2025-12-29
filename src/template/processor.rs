@@ -1,5 +1,5 @@
 use crate::{
-    cli::context::GenerationContext,
+    context::GenerationContext,
     error::{Error, Result},
     ext::PathExt,
     renderer::TemplateRenderer,
@@ -395,7 +395,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
 mod tests {
     use super::*;
     use crate::{
-        cli::context::GenerationContext, config::ConfigV1, renderer::MiniJinjaRenderer,
+        config::ConfigV1, context::GenerationContext, renderer::MiniJinjaRenderer,
         template::operation::TemplateOperation,
     };
     use fs::File;
