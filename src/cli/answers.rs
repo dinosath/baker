@@ -6,7 +6,7 @@ use crate::{
     renderer::TemplateRenderer,
 };
 use serde_json::{json, Map, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Collects answers from various sources: pre-hook output, command line arguments, and user prompts
 pub struct AnswerCollector<'a> {
@@ -43,6 +43,7 @@ impl<'a> AnswerCollector<'a> {
         config: &ConfigV1,
         pre_hook_output: Option<String>,
         cli_answers: Option<String>,
+        answers_file: Option<PathBuf>,
     ) -> Result<Value> {
         let mut answers = Map::new();
 
@@ -63,6 +64,13 @@ impl<'a> AnswerCollector<'a> {
                 },
             );
             answers.extend(pre_answers);
+        }
+
+        // Add answers from JSON file
+        if let Some(file_path) = answers_file {
+            log::debug!("Loading answers from file: {}", file_path.display());
+            let file_answers = self.load_answers_from_file(&file_path)?;
+            answers.extend(file_answers);
         }
 
         // Add answers from command line arguments
@@ -150,6 +158,21 @@ impl<'a> AnswerCollector<'a> {
         }
 
         Ok(())
+    }
+
+    /// Load answers from a JSON file.
+    fn load_answers_from_file(
+        &self,
+        file_path: &Path,
+    ) -> Result<serde_json::Map<String, serde_json::Value>> {
+        let content = std::fs::read_to_string(file_path).map_err(|e| {
+            Error::Other(anyhow::anyhow!(
+                "Failed to read answers file '{}': {}",
+                file_path.display(),
+                e
+            ))
+        })?;
+        self.parse_string_to_json(content)
     }
 
     /// Parse a string into a JSON object.

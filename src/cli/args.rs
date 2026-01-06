@@ -58,6 +58,10 @@ pub struct Args {
     #[arg(short, long)]
     pub answers: Option<String>,
 
+    /// Path to a JSON file containing predefined answers.
+    #[arg(long = "answers-file", value_name = "FILE")]
+    pub answers_file: Option<PathBuf>,
+
     /// Confirmation prompts to skip (comma-separated).
     #[arg(long = "skip-confirms", value_delimiter = ',')]
     #[arg(value_enum)]
@@ -154,5 +158,20 @@ mod tests {
         assert!(args.skip_confirms.contains(&SkipConfirm::Overwrite));
         assert!(args.non_interactive);
         assert!(args.dry_run);
+    }
+
+    #[test]
+    fn parses_answers_file_argument() {
+        use clap::Parser;
+        let args = Args::parse_from([
+            "baker",
+            "template_dir",
+            "output_dir",
+            "--answers-file",
+            "/path/to/answers.json",
+        ]);
+        assert_eq!(args.template, "template_dir");
+        assert_eq!(args.output_dir, PathBuf::from("output_dir"));
+        assert_eq!(args.answers_file, Some(PathBuf::from("/path/to/answers.json")));
     }
 }

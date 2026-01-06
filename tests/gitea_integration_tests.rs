@@ -672,6 +672,7 @@ fn test_jsonschema_file_template_from_gitea() {
         force: true,
         verbose: 2,
         answers: None,
+        answers_file: None,
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,

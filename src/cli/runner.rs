@@ -186,7 +186,12 @@ impl Runner {
     ) -> Result<serde_json::Value> {
         let collector =
             AnswerCollector::new(engine, self.args.non_interactive, template_root);
-        collector.collect_answers(config, pre_hook_output, self.args.answers.clone())
+        collector.collect_answers(
+            config,
+            pre_hook_output,
+            self.args.answers.clone(),
+            self.args.answers_file.clone(),
+        )
     }
 
     /// Processes all template files
@@ -480,6 +485,7 @@ mod tests {
             force: false,
             verbose: 0,
             answers: None,
+            answers_file: None,
             skip_confirms: Vec::new(),
             non_interactive: false,
             dry_run: false,
