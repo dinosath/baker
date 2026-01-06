@@ -102,6 +102,7 @@ pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>)
         force: true,
         verbose: 2,
         answers: answers.map(|a| a.to_string()),
+        answers_file: None,
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,

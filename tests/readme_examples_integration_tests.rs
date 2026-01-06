@@ -156,6 +156,7 @@ fn test_non_interactive_mode_with_defaults() {
         force: true,
         verbose: 2,
         answers: None, // Test default values being used
+        answers_file: None,
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,
@@ -188,6 +189,7 @@ fn test_nested_answer_context() {
         force: true,
         verbose: 2,
         answers: Some(r#"{"project_name": "Test Project", "project_author": "Test Author", "project_slug": "test_project", "use_tests": true}"#.to_string()),
+        answers_file: None,
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,
@@ -266,4 +268,83 @@ fn test_import_root() {
         "tests/expected/import_root",
         Some(r#"{"project_name": "my-project"}"#),
     );
+}
+
+#[test]
+fn test_answers_file() {
+    use std::io::Write;
+
+    let tmp_dir = tempfile::tempdir().unwrap();
+
+    // Create a temporary answers file
+    let answers_file = tmp_dir.path().join("answers.json");
+    let mut file = std::fs::File::create(&answers_file).unwrap();
+    writeln!(
+        file,
+        r#"{{"project_name": "From File", "project_author": "File Author", "project_slug": "from_file", "use_tests": true}}"#
+    )
+    .unwrap();
+
+    let output_dir = tmp_dir.path().join("output");
+    let args = Args {
+        template: "examples/demo".to_string(),
+        output_dir: output_dir.clone(),
+        force: true,
+        verbose: 2,
+        answers: None,
+        answers_file: Some(answers_file),
+        skip_confirms: vec![All],
+        non_interactive: true,
+        dry_run: false,
+    };
+    run(args).unwrap();
+
+    // Verify the generated files use values from the answers file
+    let contributing_file = output_dir.join("CONTRIBUTING.md");
+    assert!(contributing_file.exists());
+    let content = std::fs::read_to_string(contributing_file).unwrap();
+    assert!(content.contains("From File"));
+    assert!(content.contains("File Author"));
+
+    // Verify tests directory was created (use_tests: true)
+    let tests_dir = output_dir.join("tests");
+    assert!(tests_dir.exists());
+}
+
+#[test]
+fn test_answers_file_with_cli_override() {
+    use std::io::Write;
+
+    let tmp_dir = tempfile::tempdir().unwrap();
+
+    // Create a temporary answers file with initial values
+    let answers_file = tmp_dir.path().join("answers.json");
+    let mut file = std::fs::File::create(&answers_file).unwrap();
+    writeln!(
+        file,
+        r#"{{"project_name": "From File", "project_author": "File Author", "project_slug": "from_file", "use_tests": false}}"#
+    )
+    .unwrap();
+
+    let output_dir = tmp_dir.path().join("output");
+    let args = Args {
+        template: "examples/demo".to_string(),
+        output_dir: output_dir.clone(),
+        force: true,
+        verbose: 2,
+        // CLI answers should override file answers
+        answers: Some(r#"{"project_name": "CLI Override"}"#.to_string()),
+        answers_file: Some(answers_file),
+        skip_confirms: vec![All],
+        non_interactive: true,
+        dry_run: false,
+    };
+    run(args).unwrap();
+
+    // Verify CLI answer overrode the file answer
+    let contributing_file = output_dir.join("CONTRIBUTING.md");
+    assert!(contributing_file.exists());
+    let content = std::fs::read_to_string(contributing_file).unwrap();
+    assert!(content.contains("CLI Override")); // From CLI
+    assert!(content.contains("File Author")); // From file (not overridden)
 }
