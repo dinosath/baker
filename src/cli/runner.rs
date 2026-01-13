@@ -17,6 +17,7 @@ use serde_json::json;
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::Instant,
 };
 use walkdir::WalkDir;
 
@@ -32,6 +33,7 @@ impl Runner {
 
     /// Executes the complete template generation workflow
     pub fn run(self) -> Result<()> {
+        let start_time = Instant::now();
         let mut engine = get_template_engine();
         let mut context = self.prepare_environment(&mut engine)?;
 
@@ -51,7 +53,7 @@ impl Runner {
 
         self.maybe_run_post_hook(&hook_plan, &context, &engine)?;
 
-        self.finish(&context);
+        self.finish(&context, start_time);
 
         Ok(())
     }
@@ -245,8 +247,11 @@ impl Runner {
         Ok(())
     }
 
-    fn finish(&self, context: &GenerationContext) {
-        println!("{}", completion_message(context.dry_run(), context.output_root()));
+    fn finish(&self, context: &GenerationContext, start_time: std::time::Instant) {
+        println!(
+            "{}",
+            completion_message(context.dry_run(), context.output_root(), start_time)
+        );
     }
 
     /// Determines if overwrite prompts should be skipped
@@ -586,16 +591,22 @@ mod tests {
 }
 
 /// Produces the user-facing completion string for the current run, accounting for dry-run mode.
-fn completion_message(dry_run: bool, output_root: &Path) -> String {
+fn completion_message(
+    dry_run: bool,
+    output_root: &Path,
+    start_time: std::time::Instant,
+) -> String {
     if dry_run {
         format!(
-            "[DRY RUN] Template processing completed. No files were actually created in {}.",
+            "[DRY RUN] Template processing completed in {}s. No files were actually created in {}.",
+            start_time.elapsed().as_secs(),
             output_root.display()
         )
     } else {
         format!(
-            "Template generation completed successfully in {}.",
-            output_root.display()
+            "Template generation completed successfully at location {} in {}s.",
+            output_root.display(),
+            start_time.elapsed().as_secs()
         )
     }
 }
