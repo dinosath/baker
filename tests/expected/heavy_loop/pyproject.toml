@@ -1,0 +1,122 @@
+# Project Configuration
+
+[project]
+name = "heavy-loop-project"
+version = "1.0.0"
+description = "A project with 50 generated modules"
+
+[project.modules]
+count = 50
+
+names = [
+
+    "module_00",
+
+    "module_01",
+
+    "module_02",
+
+    "module_03",
+
+    "module_04",
+
+    "module_05",
+
+    "module_06",
+
+    "module_07",
+
+    "module_08",
+
+    "module_09",
+
+    "module_10",
+
+    "module_11",
+
+    "module_12",
+
+    "module_13",
+
+    "module_14",
+
+    "module_15",
+
+    "module_16",
+
+    "module_17",
+
+    "module_18",
+
+    "module_19",
+
+    "module_20",
+
+    "module_21",
+
+    "module_22",
+
+    "module_23",
+
+    "module_24",
+
+    "module_25",
+
+    "module_26",
+
+    "module_27",
+
+    "module_28",
+
+    "module_29",
+
+    "module_30",
+
+    "module_31",
+
+    "module_32",
+
+    "module_33",
+
+    "module_34",
+
+    "module_35",
+
+    "module_36",
+
+    "module_37",
+
+    "module_38",
+
+    "module_39",
+
+    "module_40",
+
+    "module_41",
+
+    "module_42",
+
+    "module_43",
+
+    "module_44",
+
+    "module_45",
+
+    "module_46",
+
+    "module_47",
+
+    "module_48",
+
+    "module_49",
+
+]
+
+
+[build]
+output_dir = "dist"
+include_tests = true
+
+[logging]
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -3,7 +3,10 @@ use crate::{
     error::{Error, Result},
     ext::PathExt,
     renderer::TemplateRenderer,
-    template::operation::{TemplateOperation, TemplateOperation::MultipleWrite, WriteOp},
+    template::operation::{
+        CreateDirOp, TemplateOperation, TemplateOperation::MultipleCreateDirectory,
+        TemplateOperation::MultipleWrite, WriteOp,
+    },
 };
 use globset::GlobSet;
 use log::debug;
@@ -215,10 +218,11 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         Ok(self.output_root.as_ref().join(target_path))
     }
 
-    /// Returns true if the path contains any MiniJinja for-loop block delimiters anywhere in the path (not just filename).
+    /// Returns true if the path contains a complete MiniJinja for-loop block (both `for` and `endfor`).
     pub fn is_template_with_loop<T: AsRef<Path>>(&self, template_entry: T) -> bool {
         let path_str = template_entry.as_ref().to_string_lossy();
-        self.loop_detector.is_match(&path_str)
+        // Must have both `{% for ... %}` and `{% endfor %}` to be a valid loop
+        self.loop_detector.is_match(&path_str) && self.loop_end_regex.is_match(&path_str)
     }
 
     /// Processes a template entry and determines the appropriate operation.
@@ -274,7 +278,12 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                 target: target_path,
                 target_exists,
             }),
-            // Directory
+            // Directory with loop
+            (false, _) if self.is_template_with_loop(&template_entry) => {
+                debug!("Processing loop directory: {}", template_entry.display());
+                self.render_loop_directory(&template_entry)
+            }
+            // Regular directory
             _ => Ok(TemplateOperation::CreateDirectory {
                 target: target_path,
                 target_exists,
@@ -386,6 +395,90 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                     content,
                     target_exists,
                 })
+            })
+            .collect()
+    }
+
+    /// Renders a directory with loop syntax, creating multiple directories based on the loop.
+    ///
+    /// This method handles directories whose paths contain MiniJinja for-loop blocks,
+    /// such as `{%for item in items%}config/{{ item.name }}{%endfor%}`.
+    ///
+    /// # Arguments
+    /// * `template_entry` - The directory path containing loop syntax
+    ///
+    /// # Returns
+    /// * `Result<TemplateOperation>` - A MultipleCreateDirectory operation with all directories to create
+    fn render_loop_directory(&self, template_entry: &Path) -> Result<TemplateOperation> {
+        let relative_path = self.get_template_name(template_entry);
+
+        // Get parent directory for context
+        let template_parent_dir =
+            template_entry.parent().map(PathBuf::from).ok_or_else(|| {
+                Error::ProcessError {
+                    source_path: template_entry.display().to_string(),
+                    e: "Failed to extract parent directory from template_entry"
+                        .to_string(),
+                }
+            })?;
+        let rendered_parent_dir =
+            self.render_template_entry(template_parent_dir.as_path())?;
+        debug!(
+            "Rendered parent directory for loop directory: {}",
+            rendered_parent_dir.display()
+        );
+
+        // Build a template string that outputs directory names separated by a delimiter
+        let template_str = template_entry.to_str_checked()?;
+
+        // Inject a separator after each loop iteration to split directory names
+        let injected_template = self.loop_end_regex.replace_all(
+            template_str,
+            &format!("{}$1", self.template_config.loop_separator),
+        );
+        debug!("Loop directory template after injection: {injected_template}");
+
+        // Render the template to get all directory names
+        let rendered_dirs = self
+            .engine
+            .render(&injected_template, self.answers, None)
+            .map_err(|e| Error::ProcessError {
+                source_path: relative_path
+                    .unwrap_or_else(|| template_entry.display().to_string()),
+                e: e.to_string(),
+            })?;
+        debug!("Rendered loop directories: {rendered_dirs}");
+
+        // Split by the separator and collect directory operations
+        let directories = self.collect_loop_dir_ops(
+            &rendered_dirs,
+            rendered_parent_dir.as_path(),
+            template_entry,
+        )?;
+
+        Ok(MultipleCreateDirectory { directories })
+    }
+
+    /// Collects directory operations from rendered loop output.
+    fn collect_loop_dir_ops(
+        &self,
+        rendered_content: &str,
+        rendered_parent_dir: &Path,
+        template_entry: &Path,
+    ) -> Result<Vec<CreateDirOp>> {
+        rendered_content
+            .split(self.template_config.loop_separator)
+            .filter(|s| !s.trim().is_empty())
+            .map(|dir_name| {
+                let dir_name = dir_name.trim();
+                let mut output_dir_path = PathBuf::from(dir_name);
+                if !output_dir_path.starts_with(rendered_parent_dir) {
+                    output_dir_path = rendered_parent_dir.join(dir_name);
+                }
+                let final_output_path =
+                    self.get_target_path(&output_dir_path, template_entry)?;
+                let target_exists = final_output_path.exists();
+                Ok(CreateDirOp { target: final_output_path, target_exists })
             })
             .collect()
     }

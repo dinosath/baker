@@ -1,0 +1,24 @@
+# Project Configuration
+
+[project]
+name = "heavy-loop-project"
+version = "1.0.0"
+description = "A project with {{ items | length }} generated modules"
+
+[project.modules]
+count = {{ items | length }}
+{% if items | length > 0 %}
+names = [
+{% for item in items %}
+    "{{ item.name }}",
+{% endfor %}
+]
+{% endif %}
+
+[build]
+output_dir = "dist"
+include_tests = true
+
+[logging]
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

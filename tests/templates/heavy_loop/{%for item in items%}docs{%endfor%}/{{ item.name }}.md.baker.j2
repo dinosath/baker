@@ -1,0 +1,15 @@
+# {{ item.name | title }} Module
+
+**Version:** {{ item.version | default("0.0.1") }}
+**Status:** {% if item.enabled | default(true) %}Enabled{% else %}Disabled{% endif %}
+
+## Overview
+
+{{ item.description | default("This module provides functionality for " + item.name + ".") }}
+
+{% if item.tags | default([]) | length > 0 %}
+## Tags
+
+{% for tag in item.tags %}- {{ tag }}
+{% endfor %}
+{% endif %}

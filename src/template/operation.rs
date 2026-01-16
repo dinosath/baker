@@ -7,12 +7,19 @@ pub enum TemplateOperation {
     CreateDirectory { target: PathBuf, target_exists: bool },
     Ignore { source: PathBuf },
     MultipleWrite { writes: Vec<WriteOp> },
+    MultipleCreateDirectory { directories: Vec<CreateDirOp> },
 }
 
 #[derive(Debug)]
 pub struct WriteOp {
     pub target: PathBuf,
     pub content: String,
+    pub target_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateDirOp {
+    pub target: PathBuf,
     pub target_exists: bool,
 }
 
@@ -28,6 +35,7 @@ impl TemplateOperation {
             TemplateOperation::CreateDirectory { target, .. } => Some(target),
             TemplateOperation::Ignore { .. } => None,
             TemplateOperation::MultipleWrite { .. } => None,
+            TemplateOperation::MultipleCreateDirectory { .. } => None,
         }
     }
 
@@ -53,6 +61,11 @@ impl TemplateOperation {
                 let targets: Vec<_> =
                     writes.iter().map(|w| w.target.display().to_string()).collect();
                 format!("write multiple files: {}", targets.join(", "))
+            }
+            TemplateOperation::MultipleCreateDirectory { directories } => {
+                let targets: Vec<_> =
+                    directories.iter().map(|d| d.target.display().to_string()).collect();
+                format!("create multiple directories: {}", targets.join(", "))
             }
         }
     }
@@ -153,6 +166,35 @@ impl TemplateOperation {
                 }
                 if !writing.is_empty() {
                     msg.push_str(&format!("Writing: {}.", writing.join(", ")));
+                }
+                msg.trim_end().to_string()
+            }
+
+            TemplateOperation::MultipleCreateDirectory { directories } => {
+                let existing: Vec<_> = directories
+                    .iter()
+                    .filter(|d| d.target_exists)
+                    .map(|d| d.target.display().to_string())
+                    .collect();
+                let creating: Vec<_> = directories
+                    .iter()
+                    .filter(|d| !d.target_exists)
+                    .map(|d| d.target.display().to_string())
+                    .collect();
+                let mut msg = String::new();
+                if !existing.is_empty() {
+                    msg.push_str(&format!(
+                        "{}Skipping existing directories: {}. ",
+                        prefix,
+                        existing.join(", ")
+                    ));
+                }
+                if !creating.is_empty() {
+                    msg.push_str(&format!(
+                        "{}Creating directories: {}.",
+                        prefix,
+                        creating.join(", ")
+                    ));
                 }
                 msg.trim_end().to_string()
             }

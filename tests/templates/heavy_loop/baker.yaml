@@ -1,0 +1,50 @@
+schemaVersion: v1
+
+questions:
+  items:
+    type: json
+    help: "List of modules to generate (each with name, description, version, enabled, tags, and optional sub-items)"
+    schema: |
+      {
+        "$schema": "http://json-schema.org/draft-04/schema#",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name"]
+              }
+            }
+          },
+          "required": ["name"]
+        }
+      }

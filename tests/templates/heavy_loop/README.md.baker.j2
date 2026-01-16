@@ -1,0 +1,28 @@
+# Project Modules
+
+This project contains {{ items | length }} modules.
+
+## Module Summary
+
+| Name | Version | Status | Tags |
+|------|---------|--------|------|
+{% for item in items -%}
+| {{ item.name }} | {{ item.version | default("0.0.1") }} | {% if item.enabled | default(true) %}✅ Enabled{% else %}❌ Disabled{% endif %} | {{ item.tags | default([]) | join(", ") }} |
+{% endfor %}
+
+## Detailed Descriptions
+
+{% for item in items %}
+### {{ item.name | title }}
+
+**Version:** {{ item.version | default("0.0.1") }}
+
+{{ item.description | default("No description provided.") }}
+
+{% if item.tags | default([]) | length > 0 -%}
+**Tags:** {% for tag in item.tags %}{{ tag }}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif %}
+
+---
+
+{% endfor %}

@@ -1,0 +1,24 @@
+# {{ item.name }} configuration
+
+[module]
+name = "{{ item.name }}"
+version = "{{ item.version | default('0.0.1') }}"
+enabled = {{ item.enabled | default(true) | lower }}
+
+{% if item.description %}
+[module.metadata]
+description = "{{ item.description }}"
+{% endif %}
+
+{% if item.tags | default([]) | length > 0 %}
+[module.tags]
+values = [
+{% for tag in item.tags %}
+    "{{ tag }}",
+{% endfor %}
+]
+{% endif %}
+
+[module.settings]
+log_level = "INFO"
+timeout = 30

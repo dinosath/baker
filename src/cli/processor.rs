@@ -3,7 +3,7 @@ use crate::{
     error::{Error, Result},
     prompt::confirm,
     template::{
-        operation::{TemplateOperation, WriteOp},
+        operation::{CreateDirOp, TemplateOperation, WriteOp},
         processor::TemplateProcessor,
     },
 };
@@ -84,6 +84,9 @@ impl<'a> FileProcessor<'a> {
             TemplateOperation::MultipleWrite { writes, .. } => {
                 self.handle_multiple_write(writes)
             }
+            TemplateOperation::MultipleCreateDirectory { directories, .. } => {
+                self.handle_multiple_create_dir(directories)
+            }
         }
     }
 
@@ -126,6 +129,15 @@ impl<'a> FileProcessor<'a> {
                 self.confirm_overwrite(&write.target, write.target_exists)?;
             if user_confirmed {
                 self.write_file(&write.content, &write.target)?;
+            }
+        }
+        Ok(true)
+    }
+
+    fn handle_multiple_create_dir(&self, directories: &[CreateDirOp]) -> Result<bool> {
+        for dir in directories {
+            if !dir.target_exists {
+                self.create_dir_all(&dir.target)?;
             }
         }
         Ok(true)
