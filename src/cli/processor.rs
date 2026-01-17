@@ -26,7 +26,7 @@ impl<'a> FileProcessor<'a> {
 
     /// Processes all files in the template directory
     pub fn process_all_files(&self) -> Result<()> {
-        for dir_entry in WalkDir::new(self.context.template_root()) {
+        for dir_entry in WalkDir::new(self.context.template_root()).follow_links(true) {
             let template_entry = dir_entry?.path().to_path_buf();
             let template_name = self.get_template_name(&template_entry);
             match self.processor.process(template_entry) {

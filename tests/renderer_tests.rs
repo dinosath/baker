@@ -138,6 +138,11 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_symlinks_folders_copy() {
+        run_and_assert("tests/templates/symlinks_folders", "tests/expected/symlinks_folders", None);
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn test_windows_yaml_path_placeholders() {

@@ -231,6 +231,38 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
     ///
     pub fn process(&self, template_entry: P) -> Result<TemplateOperation> {
         let template_entry = template_entry.as_ref().to_path_buf();
+        // Determine actual source path on disk. If the template path does not exist
+        // (for example when the template contains a symlinked directory path),
+        // resolve the nearest symlink ancestor and map the template path to the
+        // real source path under that symlink's target. We keep `template_entry`
+        // for rendering (so output paths match the logical template paths), but
+        // use `source_entry` for reading file metadata and contents.
+        let mut source_entry = template_entry.clone();
+        if !source_entry.exists() {
+            let mut ancestor = source_entry.as_path();
+            while ancestor.starts_with(self.template_root.as_ref()) {
+                if let Ok(meta) = fs::symlink_metadata(ancestor) {
+                    if meta.file_type().is_symlink() {
+                        let target_rel = fs::read_link(ancestor)?;
+                        let resolved_target = if target_rel.is_relative() {
+                            ancestor.parent().unwrap_or_else(|| Path::new("")).join(&target_rel)
+                        } else {
+                            target_rel.clone()
+                        };
+                        if let Ok(suffix) = template_entry.strip_prefix(ancestor) {
+                            source_entry = resolved_target.join(suffix);
+                        }
+                        break;
+                    }
+                }
+                if let Some(p) = ancestor.parent() {
+                    ancestor = p;
+                } else {
+                    break;
+                }
+            }
+        }
+
         let rendered_entry = self.render_template_entry(&template_entry)?;
         let target_path = self.get_target_path(&rendered_entry, &template_entry)?;
         let target_exists = target_path.exists();
@@ -241,10 +273,10 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         }
 
         // Handle different types of entries
-        match (template_entry.is_file(), self.is_template_file(&rendered_entry)) {
+        match (source_entry.is_file(), self.is_template_file(&rendered_entry)) {
             // Template file
             (true, true) => {
-                let template_content = fs::read_to_string(&template_entry)?;
+                let template_content = fs::read_to_string(&source_entry)?;
                 let template_name =
                     template_entry.file_name().and_then(|name| name.to_str());
                 let relative_path = self.get_template_name(&template_entry);
@@ -270,7 +302,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
             }
             // Regular file
             (true, false) => Ok(TemplateOperation::Copy {
-                source: template_entry,
+                source: source_entry,
                 target: target_path,
                 target_exists,
             }),

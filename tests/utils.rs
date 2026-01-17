@@ -15,18 +15,21 @@ pub fn print_dir_diff(dir1: &Path, dir2: &Path) {
     let mut files1 = std::collections::HashSet::new();
     let mut files2 = std::collections::HashSet::new();
 
+    // Follow symlinks so files reachable via symlinked folders are included in the comparison.
     for entry in WalkDir::new(dir1)
+        .follow_links(true)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().is_file())
     {
         let rel = entry.path().strip_prefix(dir1).unwrap().to_path_buf();
         files1.insert(rel);
     }
     for entry in WalkDir::new(dir2)
+        .follow_links(true)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().is_file())
     {
         let rel = entry.path().strip_prefix(dir2).unwrap().to_path_buf();
         files2.insert(rel);

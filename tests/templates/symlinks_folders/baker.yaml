@@ -1,0 +1,7 @@
+schemaVersion: v1
+
+questions:
+  include_optional:
+    type: bool
+    help: Include optional folder?
+    default: true
