@@ -138,6 +138,21 @@ mod tests {
         );
     }
 
+    /// Tests that symlinked directories with Jinja template names are followed
+    /// and their contents are copied to the rendered directory name.
+    /// This reproduces the issue where `{% if 'helm' in features %}helm{% endif %}` symlink
+    /// pointing to a directory should have its contents copied to `helm/` in the output.
+    /// Also tests that for-loop templates inside symlinked directories work correctly.
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn test_symlinks_follow_directory() {
+        run_and_assert(
+            "tests/templates/symlinks_follow_dir",
+            "tests/expected/symlinks_follow_dir",
+            Some("{\"include_helm\": true, \"services\": [{\"name\": \"api\"}, {\"name\": \"web\"}]}"),
+        );
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn test_windows_yaml_path_placeholders() {
