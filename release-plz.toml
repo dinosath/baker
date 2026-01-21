@@ -3,3 +3,4 @@ changelog_config = "cliff.toml"
 git_only = true
 publish = false
 release_always = false
+git_release_enable = false
