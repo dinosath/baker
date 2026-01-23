@@ -1,7 +1,7 @@
 use baker_cli::{run, Args, SkipConfirm::All};
 use test_log::test;
 mod utils;
-use utils::run_and_assert;
+use utils::{resolve_path, run_and_assert};
 
 #[test]
 fn test_single_choice_question() {
@@ -288,7 +288,7 @@ fn test_answers_file() {
 
     let output_dir = tmp_dir.path().join("output");
     let args = Args {
-        template: "examples/demo".to_string(),
+        template: resolve_path("examples/demo").to_string_lossy().to_string(),
         output_dir: output_dir.clone(),
         force: true,
         verbose: 2,
@@ -329,7 +329,7 @@ fn test_answers_file_with_cli_override() {
 
     let output_dir = tmp_dir.path().join("output");
     let args = Args {
-        template: "examples/demo".to_string(),
+        template: resolve_path("examples/demo").to_string_lossy().to_string(),
         output_dir: output_dir.clone(),
         force: true,
         verbose: 2,

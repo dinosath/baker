@@ -1,5 +1,5 @@
-use baker::error::default_error_handler;
 use baker_cli::{get_args, get_log_level_from_verbose, run};
+use baker_core::error::default_error_handler;
 
 fn main() {
     let args = get_args();

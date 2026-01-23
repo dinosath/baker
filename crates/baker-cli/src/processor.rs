@@ -1,4 +1,4 @@
-use baker::{
+use baker_core::{
     context::GenerationContext,
     error::{Error, Result},
     prompt::confirm,
@@ -68,7 +68,7 @@ impl<'a> FileProcessor<'a> {
                     log::info!("{message}");
                 }
                 Err(e) => match e {
-                    baker::error::Error::ProcessError { .. } => log::warn!("{e}"),
+                    baker_core::error::Error::ProcessError { .. } => log::warn!("{e}"),
                     _ => log::error!("{e}"),
                 },
             }
@@ -260,7 +260,7 @@ impl<'a> FileProcessor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use baker::renderer::MiniJinjaRenderer;
+    use baker_core::renderer::MiniJinjaRenderer;
     use globset::GlobSetBuilder;
     use indexmap::IndexMap;
     use serde_json::json;
@@ -278,7 +278,7 @@ mod tests {
         let mut context = GenerationContext::new(
             template_root.path().to_path_buf(),
             output_root.path().to_path_buf(),
-            baker::config::ConfigV1 {
+            baker_core::config::ConfigV1 {
                 template_suffix: ".baker.j2".into(),
                 loop_separator: "".into(),
                 loop_content_separator: "".into(),

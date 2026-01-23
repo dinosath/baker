@@ -1,6 +1,6 @@
 [package]
 name = "baker-cli"
-version = "0.13.2"
+version = "0.14.1"
 edition = "2021"
 authors = ["Ali Aliyev <ali@aliev.me>"]
 repository = "https://github.com/aliev/baker"
@@ -14,7 +14,7 @@ name = "baker"
 path = "src/main.rs"
 
 [dependencies]
-baker = { path = ".." }
+baker-core = { path = "../baker-core" }
 clap = { version = "4.5", features = ["derive"] }
 log = "0.4"
 env_logger = "0.11"
@@ -23,13 +23,13 @@ serde = { version = "1.0", features = ["derive"] }
 globset = "0.4"
 walkdir = "2.5"
 anyhow = "1.0"
-indexmap = { version = "2.10", features = ["serde"] }
-jsonschema = "0.37"
+indexmap = { version = "2.12", features = ["serde"] }
+jsonschema = "0.40"
 
 [dev-dependencies]
 dir-diff = "0.3"
 tempfile = "3.20"
 test-log = { version = "0.2", features = ["trace", "color"] }
 testcontainers = { version = "0.26", features = ["blocking"] }
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.13", features = ["blocking", "json"] }
 git2 = { version = "0.20", features = ["vendored-openssl", "vendored-libgit2"] }

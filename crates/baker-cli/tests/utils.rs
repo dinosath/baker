@@ -5,10 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Returns the workspace root directory (parent of baker-cli).
+/// Returns the workspace root directory (grandparent of baker-cli, i.e., the repository root).
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .parent() // crates/
+        .expect("Failed to get crates dir")
+        .parent() // workspace root
         .expect("Failed to get workspace root")
         .to_path_buf()
 }

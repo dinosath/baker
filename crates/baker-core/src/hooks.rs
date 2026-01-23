@@ -43,7 +43,7 @@ struct HookInput<'a> {
 ///
 /// # Example
 /// ```no_run
-/// use baker::hooks::run_hook;
+/// use baker_core::hooks::run_hook;
 /// use std::path::Path;
 ///
 /// let result = run_hook(

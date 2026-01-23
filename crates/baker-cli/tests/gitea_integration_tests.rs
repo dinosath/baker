@@ -746,8 +746,8 @@ pub mod {{ module_name }} {
 #[test]
 #[ignore] // Ignore by default as it requires Docker
 fn test_build_rs_template_from_gitea() {
-    use baker::loader::get_template;
-    use baker::renderer::{new_renderer, TemplateRenderer};
+    use baker_core::loader::get_template;
+    use baker_core::renderer::{new_renderer, TemplateRenderer};
 
     let env = get_shared_gitea();
 

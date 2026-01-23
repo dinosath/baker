@@ -23,12 +23,12 @@ pub fn get_prompt_provider() -> impl PromptProvider {
 ///
 /// # Examples
 /// ```no_run
-/// use baker::prompt::ask_question;
+/// use baker_core::prompt::ask_question;
 /// use serde_json::json;
 ///
-/// # let question = baker::config::Question {
+/// # let question = baker_core::config::Question {
 /// #     help: "Project name".into(),
-/// #     r#type: baker::config::Type::Str,
+/// #     r#type: baker_core::config::Type::Str,
 /// #     default: json!("demo"),
 /// #     choices: vec![],
 /// #     multiselect: false,
@@ -36,12 +36,12 @@ pub fn get_prompt_provider() -> impl PromptProvider {
 /// #     ask_if: String::new(),
 /// #     schema: None,
 /// #     schema_file: None,
-/// #     validation: baker::config::types::get_default_validation(),
+/// #     validation: baker_core::config::types::get_default_validation(),
 /// # };
 /// # let default = json!("demo");
 /// let answer = ask_question(&question, &default, "Project name".to_string())?;
 /// assert!(answer.is_string());
-/// # Ok::<(), baker::error::Error>(())
+/// # Ok::<(), baker_core::error::Error>(())
 /// ```
 pub fn ask_question(question: &Question, default: &Value, help: String) -> Result<Value> {
     ask_question_with_provider(question, default, &help, get_prompt_provider())

@@ -1,7 +1,7 @@
-use baker::loader::get_template;
-use baker::loader::git::GitLoader;
-use baker::loader::interface::TemplateLoader;
-use baker::loader::local::LocalLoader;
+use baker_core::loader::get_template;
+use baker_core::loader::git::GitLoader;
+use baker_core::loader::interface::TemplateLoader;
+use baker_core::loader::local::LocalLoader;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;

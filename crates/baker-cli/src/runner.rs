@@ -1,5 +1,5 @@
 use crate::{answers::AnswerCollector, processor::FileProcessor, Args, SkipConfirm};
-use baker::{
+use baker_core::{
     config::{Config, ConfigV1},
     context::GenerationContext,
     error::{Error, Result},
@@ -86,7 +86,7 @@ impl Runner {
     fn load_and_validate_config(
         &self,
         template_root: &PathBuf,
-    ) -> Result<baker::config::ConfigV1> {
+    ) -> Result<baker_core::config::ConfigV1> {
         let config = Config::load_config(template_root)?;
         let Config::V1(config) = config;
         config.validate()?;
@@ -96,7 +96,7 @@ impl Runner {
     fn prepare_hooks(
         &self,
         context: &GenerationContext,
-        engine: &dyn baker::renderer::TemplateRenderer,
+        engine: &dyn baker_core::renderer::TemplateRenderer,
     ) -> Result<HookPlan> {
         let config = context.config();
         let pre_hook_filename = engine.render(
@@ -178,8 +178,8 @@ impl Runner {
     /// Collects answers from all available sources
     fn gather_answers(
         &self,
-        config: &baker::config::ConfigV1,
-        engine: &dyn baker::renderer::TemplateRenderer,
+        config: &baker_core::config::ConfigV1,
+        engine: &dyn baker_core::renderer::TemplateRenderer,
         pre_hook_output: Option<String>,
         template_root: &Path,
     ) -> Result<serde_json::Value> {
@@ -197,7 +197,7 @@ impl Runner {
     fn process_templates(
         &self,
         context: &GenerationContext,
-        engine: &dyn baker::renderer::TemplateRenderer,
+        engine: &dyn baker_core::renderer::TemplateRenderer,
     ) -> Result<()> {
         let bakerignore = parse_bakerignore_file(context.template_root())?;
 
@@ -574,7 +574,7 @@ mod tests {
 
     #[test]
     fn render_hook_runner_renders_tokens_with_answers() {
-        let engine = baker::template::get_template_engine();
+        let engine = baker_core::template::get_template_engine();
         let tokens = vec!["python{{ version }}".to_string(), "-u".to_string()];
         let answers = json!({ "version": "3" });
 

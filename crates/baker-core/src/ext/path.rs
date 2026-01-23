@@ -15,7 +15,7 @@ pub trait PathExt {
     ///
     /// # Examples
     /// ```
-    /// use baker::ext::PathExt;
+    /// use baker_core::ext::PathExt;
     /// use std::path::Path;
     ///
     /// let path = Path::new("test");
@@ -30,7 +30,7 @@ pub trait PathExt {
     ///
     /// # Examples
     /// ```
-    /// use baker::ext::PathExt;
+    /// use baker_core::ext::PathExt;
     /// use std::path::Path;
     ///
     /// let path = Path::new("test");
