@@ -1,4 +1,7 @@
-use crate::{answers::AnswerCollector, processor::FileProcessor, Args, SkipConfirm};
+use crate::{
+    answers::AnswerCollector, processor::FileProcessor, store::TemplateStore, Args,
+    SkipConfirm,
+};
 use baker_core::{
     config::{Config, ConfigV1},
     context::GenerationContext,
@@ -11,13 +14,20 @@ use baker_core::{
     template::{get_template_engine, processor::TemplateProcessor},
 };
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use log::debug;
+use log::{debug, info};
 use serde_json::json;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 use walkdir::WalkDir;
+
+/// Holds the extracted template directory if using an installed template.
+/// This ensures the temp directory lives as long as needed.
+struct TemplateSource {
+    path: PathBuf,
+    _temp_dir: Option<tempfile::TempDir>,
+}
 
 /// Main CLI runner that orchestrates the entire template generation workflow
 pub struct Runner {
@@ -32,7 +42,7 @@ impl Runner {
     /// Executes the complete template generation workflow
     pub fn run(self) -> Result<()> {
         let mut engine = get_template_engine();
-        let mut context = self.prepare_environment(&mut engine)?;
+        let (mut context, _template_source) = self.prepare_environment(&mut engine)?;
 
         let hook_plan = self.prepare_hooks(&context, &engine)?;
 
@@ -58,28 +68,49 @@ impl Runner {
     fn prepare_environment(
         &self,
         engine: &mut dyn TemplateRenderer,
-    ) -> Result<GenerationContext> {
+    ) -> Result<(GenerationContext, TemplateSource)> {
         let output_root = self.prepare_output_dir()?;
-        let template_root = self.resolve_template()?;
-        let config = self.load_and_validate_config(&template_root)?;
+        let template_source = self.resolve_template()?;
+        let config = self.load_and_validate_config(&template_source.path)?;
         debug!("Loaded config: follow_symlinks={}", config.follow_symlinks);
-        self.add_templates_in_renderer(&template_root, &config, engine);
+        self.add_templates_in_renderer(&template_source.path, &config, engine);
 
-        Ok(GenerationContext::new(
-            template_root,
+        let context = GenerationContext::new(
+            template_source.path.clone(),
             output_root,
             config,
             self.args.skip_confirms.iter().map(|s| (*s).into()).collect(),
             self.args.dry_run,
-        ))
+        );
+
+        Ok((context, template_source))
     }
 
     fn prepare_output_dir(&self) -> Result<PathBuf> {
         self.get_output_dir(&self.args.output_dir, self.args.force, self.args.dry_run)
     }
 
-    fn resolve_template(&self) -> Result<PathBuf> {
-        get_template(self.args.template.as_str(), self.should_skip_overwrite_prompts())
+    fn resolve_template(&self) -> Result<TemplateSource> {
+        let template_ref = self.args.template.as_str();
+
+        // First, check if this is an installed template (simple name without path separators)
+        if !template_ref.contains('/')
+            && !template_ref.contains('\\')
+            && !template_ref.contains(':')
+        {
+            if let Ok(store) = TemplateStore::new() {
+                if store.is_installed(template_ref) {
+                    info!("Using installed template: {}", template_ref);
+                    let temp_dir = store.extract_to_temp(template_ref)?;
+                    let path = temp_dir.path().to_path_buf();
+                    return Ok(TemplateSource { path, _temp_dir: Some(temp_dir) });
+                }
+            }
+        }
+
+        // Fall back to loading from git or local path
+        let path = get_template(template_ref, self.should_skip_overwrite_prompts())?;
+        Ok(TemplateSource { path, _temp_dir: None })
     }
 
     /// Loads and validates the template configuration

@@ -13,6 +13,10 @@ license = "MIT"
 name = "baker"
 path = "src/main.rs"
 
+[features]
+default = []
+mcp = ["rust-mcp-sdk", "async-trait", "tokio", "serde_yaml"]
+
 [dependencies]
 baker-core = { path = "../baker-core" }
 clap = { version = "4.5", features = ["derive"] }
@@ -25,11 +29,29 @@ walkdir = "2.5"
 anyhow = "1.0"
 indexmap = { version = "2.12", features = ["serde"] }
 jsonschema = "0.40"
+dirs = "6.0"
+flate2 = "1.1"
+tar = "0.4"
+tempfile = "3.20"
+
+# MCP dependencies (optional)
+rust-mcp-sdk = { version = "0.8", default-features = false, features = [
+    "server",
+    "macros",
+    "stdio",
+], optional = true }
+async-trait = { version = "0.1", optional = true }
+tokio = { version = "1.45", features = [
+    "rt-multi-thread",
+    "macros",
+], optional = true }
+serde_yaml = { version = "0.9", optional = true }
 
 [dev-dependencies]
 dir-diff = "0.3"
-tempfile = "3.20"
 test-log = { version = "0.2", features = ["trace", "color"] }
-testcontainers = { version = "0.26", features = ["blocking"] }
-reqwest = { version = "0.13", features = ["blocking", "json"] }
 git2 = { version = "0.20", features = ["vendored-openssl", "vendored-libgit2"] }
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros"] }
+
+# MCP integration testing - use rmcp client to test the server
+rmcp = { version = "0.13", features = ["client", "transport-child-process"] }

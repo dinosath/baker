@@ -8,7 +8,7 @@
 //! Run these tests with: `cargo test --test gitea_integration_tests -- --ignored`
 
 use baker_cli::SkipConfirm::All;
-use baker_cli::{run, Args};
+use baker_cli::{run, Args, TemplateStore};
 use git2::{Cred, PushOptions, RemoteCallbacks, Repository, Signature};
 use reqwest::blocking::Client;
 use serde_json::json;
@@ -826,4 +826,218 @@ fn test_build_rs_template_from_gitea() {
     eprintln!("Generated code from Gitea template:");
     eprintln!("{}", generated_code);
     eprintln!("Successfully used Baker in build.rs style from Gitea template!");
+}
+
+#[test]
+#[ignore] // Ignore by default as it requires Docker
+fn test_install_template_from_gitea() {
+    let env = get_shared_gitea();
+
+    // Create a unique repo for this test
+    let repo_name = "installable-template";
+    let repo_url = env.create_repo(repo_name).expect("Failed to create repository");
+
+    // Create and push a sample template
+    let template_dir = TempDir::new().expect("Failed to create temp dir");
+    create_sample_template(template_dir.path());
+
+    init_and_push_repo(template_dir.path(), &repo_url, TEST_USER, TEST_PASSWORD)
+        .expect("Failed to push to Gitea");
+
+    // Create a temporary store directory (isolated from the real user store)
+    let store_dir = TempDir::new().expect("Failed to create store temp dir");
+    let store = TemplateStore::with_dir(store_dir.path().to_path_buf());
+
+    // Get the clone URL with auth
+    let clone_url = env.clone_url_with_auth(repo_name);
+
+    // Install the template from Gitea
+    store
+        .install(
+            &clone_url,
+            "gitea-template",
+            Some("Template installed from Gitea".to_string()),
+            false,
+        )
+        .expect("Failed to install template from Gitea");
+
+    // Verify it's installed
+    assert!(store.is_installed("gitea-template"), "Template should be installed");
+
+    // Verify metadata
+    let metadata = store.get_metadata("gitea-template").expect("Failed to get metadata");
+    assert_eq!(metadata.name, "gitea-template");
+    assert_eq!(metadata.description, Some("Template installed from Gitea".to_string()));
+    assert!(metadata.source.contains(repo_name));
+
+    // List templates
+    let templates = store.list().expect("Failed to list templates");
+    assert_eq!(templates.len(), 1);
+
+    // Extract and verify contents
+    let extracted =
+        store.extract_to_temp("gitea-template").expect("Failed to extract template");
+
+    assert!(
+        extracted.path().join("baker.yaml").exists(),
+        "baker.yaml should exist in extracted template"
+    );
+    assert!(
+        extracted.path().join("README.md.baker.j2").exists(),
+        "README.md.baker.j2 should exist in extracted template"
+    );
+    assert!(
+        extracted.path().join("src/main.txt").exists(),
+        "src/main.txt should exist in extracted template"
+    );
+
+    // Verify .git directory is NOT included in the archive
+    assert!(
+        !extracted.path().join(".git").exists(),
+        ".git directory should be excluded from archive"
+    );
+
+    // Now use the installed template to generate a project
+    let output_dir = TempDir::new().expect("Failed to create output temp dir");
+
+    let args = Args {
+        template: extracted.path().to_string_lossy().to_string(),
+        output_dir: output_dir.path().to_path_buf(),
+        force: true,
+        verbose: 2,
+        answers: Some(
+            r#"{"project_name": "Gitea Project", "version": "1.0.0"}"#.to_string(),
+        ),
+        answers_file: None,
+        skip_confirms: vec![All],
+        non_interactive: true,
+        dry_run: false,
+    };
+
+    run(args).expect("Baker run failed");
+
+    // Verify generated output
+    let readme = output_dir.path().join("README.md");
+    assert!(readme.exists(), "README.md should be generated");
+
+    let readme_content = fs::read_to_string(&readme).expect("Failed to read README.md");
+    assert!(
+        readme_content.contains("Gitea Project"),
+        "README should contain project name"
+    );
+    assert!(readme_content.contains("1.0.0"), "README should contain version");
+
+    // Clean up: remove the installed template
+    store.remove("gitea-template").expect("Failed to remove template");
+    assert!(!store.is_installed("gitea-template"), "Template should be removed");
+
+    // Verify store directory is empty after removal
+    let templates_after = store.list().expect("Failed to list templates after removal");
+    assert!(templates_after.is_empty(), "Store should be empty after removal");
+
+    eprintln!("Successfully installed, used, and removed template from Gitea!");
+}
+
+#[test]
+#[ignore] // Ignore by default as it requires Docker
+fn test_install_template_from_gitea_with_force_overwrite() {
+    let env = get_shared_gitea();
+
+    // Create a unique repo for this test
+    let repo_name = "overwrite-template";
+    let repo_url = env.create_repo(repo_name).expect("Failed to create repository");
+
+    // Create and push initial template
+    let template_dir = TempDir::new().expect("Failed to create temp dir");
+
+    // Create initial version
+    let baker_yaml_v1 = r#"schemaVersion: v1
+
+questions:
+  project_name:
+    type: str
+    help: Enter project name
+    default: "version 1 project"
+"#;
+    fs::write(template_dir.path().join("baker.yaml"), baker_yaml_v1)
+        .expect("Failed to write baker.yaml");
+    fs::write(template_dir.path().join("VERSION.txt"), "Version 1.0")
+        .expect("Failed to write VERSION.txt");
+
+    init_and_push_repo(template_dir.path(), &repo_url, TEST_USER, TEST_PASSWORD)
+        .expect("Failed to push to Gitea");
+
+    // Create a temporary store directory
+    let store_dir = TempDir::new().expect("Failed to create store temp dir");
+    let store = TemplateStore::with_dir(store_dir.path().to_path_buf());
+
+    let clone_url = env.clone_url_with_auth(repo_name);
+
+    // First install
+    store
+        .install(&clone_url, "overwrite-test", Some("Version 1".to_string()), false)
+        .expect("Failed to install template v1");
+
+    // Verify first install
+    let metadata_v1 =
+        store.get_metadata("overwrite-test").expect("Failed to get metadata");
+    assert_eq!(metadata_v1.description, Some("Version 1".to_string()));
+
+    let extracted_v1 =
+        store.extract_to_temp("overwrite-test").expect("Failed to extract v1");
+    let version_content_v1 = fs::read_to_string(extracted_v1.path().join("VERSION.txt"))
+        .expect("Failed to read VERSION");
+    assert!(version_content_v1.contains("Version 1.0"));
+
+    // Update the template in Gitea
+    let baker_yaml_v2 = r#"schemaVersion: v1
+
+questions:
+  project_name:
+    type: str
+    help: Enter project name (updated)
+    default: "version 2 project"
+"#;
+    fs::write(template_dir.path().join("baker.yaml"), baker_yaml_v2)
+        .expect("Failed to write baker.yaml v2");
+    fs::write(template_dir.path().join("VERSION.txt"), "Version 2.0")
+        .expect("Failed to write VERSION.txt v2");
+
+    let local_repo =
+        Repository::open(template_dir.path()).expect("Failed to open local repo");
+    add_commit(&local_repo, baker_yaml_v2, "Update to version 2", TEST_USER)
+        .expect("Failed to add commit");
+    push_current_branch(&local_repo, TEST_USER, TEST_PASSWORD)
+        .expect("Failed to push v2 changes");
+
+    // Try to install without force - should fail
+    let result =
+        store.install(&clone_url, "overwrite-test", Some("Version 2".to_string()), false);
+    assert!(result.is_err(), "Install without force should fail");
+    assert!(
+        result.unwrap_err().to_string().contains("already exists"),
+        "Error should mention template already exists"
+    );
+
+    // Install with force - should succeed
+    store
+        .install(&clone_url, "overwrite-test", Some("Version 2".to_string()), true)
+        .expect("Failed to install template v2 with force");
+
+    // Verify second install
+    let metadata_v2 =
+        store.get_metadata("overwrite-test").expect("Failed to get metadata v2");
+    assert_eq!(metadata_v2.description, Some("Version 2".to_string()));
+
+    let extracted_v2 =
+        store.extract_to_temp("overwrite-test").expect("Failed to extract v2");
+    let version_content_v2 = fs::read_to_string(extracted_v2.path().join("VERSION.txt"))
+        .expect("Failed to read VERSION v2");
+    assert!(version_content_v2.contains("Version 2.0"), "Should have version 2 content");
+
+    // Clean up
+    store.remove("overwrite-test").expect("Failed to remove template");
+    assert!(!store.is_installed("overwrite-test"));
+
+    eprintln!("Successfully tested force overwrite of template from Gitea!");
 }
