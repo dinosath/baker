@@ -2,6 +2,7 @@ use crate::{
     error::{Error, Result},
     prompt::confirm,
 };
+use gix::progress::Discard;
 use std::fs;
 use std::path::PathBuf;
 use url::Url;
@@ -102,31 +103,89 @@ impl<S: AsRef<str>> GitLoader<S> {
     }
 
     /// Recursively initializes and updates all submodules in a repository.
-    fn init_submodules(&self, repo: &git2::Repository, home: &str) -> Result<()> {
-        for mut submodule in repo.submodules()? {
-            let submodule_name = submodule.name().unwrap_or("unknown").to_string();
-            log::debug!("Initializing submodule: {}", submodule_name);
-            submodule.init(false)?;
-            let home_owned = home.to_string();
-            let mut callbacks = git2::RemoteCallbacks::new();
-            callbacks.credentials(move |_url, username_from_url, _allowed_types| {
-                git2::Cred::ssh_key(
-                    username_from_url.unwrap_or("git"),
-                    None,
-                    std::path::Path::new(&format!("{}/.ssh/id_rsa", home_owned)),
-                    None,
-                )
-            });
+    fn init_submodules(&self, repo: &gix::Repository) -> Result<()> {
+        // Get the list of submodules from the repository
+        let submodules = match repo.submodules() {
+            Ok(Some(platform)) => platform,
+            Ok(None) => return Ok(()),
+            Err(e) => {
+                log::debug!("No submodules found or error reading submodules: {}", e);
+                return Ok(());
+            }
+        };
 
-            let mut fetch_opts = git2::FetchOptions::new();
-            fetch_opts.remote_callbacks(callbacks);
-            let mut submodule_update_opts = git2::SubmoduleUpdateOptions::new();
-            submodule_update_opts.fetch(fetch_opts);
+        for submodule in submodules {
+            let name = submodule.name().to_string();
+            log::debug!("Initializing submodule: {}", name);
 
-            submodule.update(true, Some(&mut submodule_update_opts))?;
+            let submodule_path = match submodule.path() {
+                Ok(p) => PathBuf::from(p.to_string()),
+                Err(e) => {
+                    log::warn!("Failed to get submodule path for {}: {}", name, e);
+                    continue;
+                }
+            };
 
-            if let Ok(sub_repo) = submodule.open() {
-                self.init_submodules(&sub_repo, home)?;
+            let submodule_url = match submodule.url() {
+                Ok(url) => url.to_bstring().to_string(),
+                Err(e) => {
+                    log::warn!("Failed to get URL for submodule {}: {}", name, e);
+                    continue;
+                }
+            };
+
+            let full_path = repo
+                .workdir()
+                .ok_or_else(|| Error::GitError("No working directory".to_string()))?
+                .join(&submodule_path);
+
+            log::debug!(
+                "Cloning submodule {} from {} to {:?}",
+                name,
+                submodule_url,
+                full_path
+            );
+
+            // Clone the submodule
+            if !full_path.exists()
+                || full_path.read_dir().map(|mut d| d.next().is_none()).unwrap_or(true)
+            {
+                match gix::clone::PrepareFetch::new(
+                    gix::url::parse(submodule_url.as_str().into()).map_err(|e| {
+                        Error::GitError(format!("Invalid submodule URL: {}", e))
+                    })?,
+                    &full_path,
+                    gix::create::Kind::WithWorktree,
+                    gix::create::Options::default(),
+                    gix::open::Options::isolated(),
+                ) {
+                    Ok(mut clone) => {
+                        let (mut checkout, _outcome) = clone
+                            .fetch_then_checkout(Discard, &gix::interrupt::IS_INTERRUPTED)
+                            .map_err(|e| {
+                                Error::GitError(format!(
+                                    "Failed to fetch submodule {}: {}",
+                                    name, e
+                                ))
+                            })?;
+
+                        let (sub_repo, _outcome) = checkout
+                            .main_worktree(Discard, &gix::interrupt::IS_INTERRUPTED)
+                            .map_err(|e| {
+                                Error::GitError(format!(
+                                    "Failed to checkout submodule {}: {}",
+                                    name, e
+                                ))
+                            })?;
+
+                        // Recursively init submodules of this submodule
+                        let sub_repo_local = sub_repo.into_sync().to_thread_local();
+                        self.init_submodules(&sub_repo_local)?;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to clone submodule {}: {}", name, e);
+                    }
+                }
             }
         }
         Ok(())
@@ -160,37 +219,36 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
         }
 
         log::debug!("Cloning to '{}'", clone_path.display());
-        let home = std::env::var("HOME").map_err(|e| {
-            Error::Other(anyhow::anyhow!("Failed to get HOME directory: {}", e))
-        })?;
 
-        // Set up authentication callbacks
-        let mut callbacks = git2::RemoteCallbacks::new();
-        callbacks.credentials(|_url, username_from_url, _allowed_types| {
-            git2::Cred::ssh_key(
-                username_from_url.unwrap_or("git"),
-                None,
-                std::path::Path::new(&format!("{home}/.ssh/id_rsa")),
-                None,
-            )
-        });
+        // Parse the URL
+        let url = gix::url::parse(repo_url.into())
+            .map_err(|e| Error::GitError(format!("Invalid repository URL: {}", e)))?;
 
-        // Configure fetch options with callbacks
-        let mut fetch_opts = git2::FetchOptions::new();
-        fetch_opts.remote_callbacks(callbacks);
+        // Prepare the clone operation
+        let mut clone = gix::clone::PrepareFetch::new(
+            url,
+            &clone_path,
+            gix::create::Kind::WithWorktree,
+            gix::create::Options::default(),
+            gix::open::Options::isolated(),
+        )
+        .map_err(|e| Error::GitError(format!("Failed to prepare clone: {}", e)))?;
 
-        // Set up and perform clone
-        let mut builder = git2::build::RepoBuilder::new();
-        builder.fetch_options(fetch_opts);
+        // Fetch and checkout
+        let (mut checkout, _outcome) = clone
+            .fetch_then_checkout(Discard, &gix::interrupt::IS_INTERRUPTED)
+            .map_err(|e| Error::GitError(format!("Failed to fetch repository: {}", e)))?;
 
-        match builder.clone(repo_url, &clone_path) {
-            Ok(repo) => {
-                // Initialize and update submodules recursively
-                self.init_submodules(&repo, &home)?;
-                Ok(clone_path)
-            }
-            Err(e) => Err(Error::Git2Error(e)),
-        }
+        let (repo, _outcome) =
+            checkout.main_worktree(Discard, &gix::interrupt::IS_INTERRUPTED).map_err(
+                |e| Error::GitError(format!("Failed to checkout repository: {}", e)),
+            )?;
+
+        // Initialize and update submodules recursively
+        let repo_local = repo.into_sync().to_thread_local();
+        self.init_submodules(&repo_local)?;
+
+        Ok(clone_path)
     }
 }
 

@@ -39,7 +39,7 @@ pub enum Error {
 
     // External tool errors
     #[error("Git operation failed: {0}")]
-    Git2Error(#[from] git2::Error),
+    GitError(String),
 
     #[error("Template rendering failed: {0}")]
     MinijinjaError(#[from] minijinja::Error),
