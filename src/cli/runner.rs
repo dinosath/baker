@@ -16,7 +16,6 @@ use log::debug;
 use serde_json::json;
 use std::{
     fs,
-    io::Write,
     path::{Path, PathBuf},
 };
 use walkdir::WalkDir;
@@ -173,6 +172,7 @@ impl Runner {
                 &hook_plan.pre_hook_file,
                 None,
                 &runner,
+                false,
             )
         } else {
             Ok(None)
@@ -239,19 +239,11 @@ impl Runner {
                 &hook_plan.post_hook_file,
                 Some(context.answers()),
                 &runner,
+                hook_plan.post_hook_print_stdout,
             )?;
 
             if let Some(result) = post_hook_stdout {
-                if hook_plan.post_hook_print_stdout {
-                    log::debug!(
-                        "Post-hook stdout printed to terminal ({} bytes)",
-                        result.len()
-                    );
-                    print!("{result}");
-                    std::io::stdout().flush()?;
-                } else {
-                    log::debug!("Post-hook stdout content: {result}");
-                }
+                log::debug!("Post-hook stdout content: {result}");
             }
         }
         Ok(())
