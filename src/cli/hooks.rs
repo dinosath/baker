@@ -179,10 +179,16 @@ mod tests {
             "-File".to_string(),
         ];
 
-        let output =
-            run_hook(temp_dir.path(), temp_dir.path(), &script_path, None, &runner, false)
-                .expect("hook execution")
-                .expect("stdout");
+        let output = run_hook(
+            temp_dir.path(),
+            temp_dir.path(),
+            &script_path,
+            None,
+            &runner,
+            false,
+        )
+        .expect("hook execution")
+        .expect("stdout");
 
         assert!(output.contains("windows_runner"));
     }
