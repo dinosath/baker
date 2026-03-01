@@ -684,6 +684,23 @@ This feature is especially helpful on Windows where scripts such as `.ps1`
 cannot be launched directly, and on Unix when you want to force a specific
 interpreter (e.g., Python, Node.js, Bash).
 
+### Displaying Post-hook Stdout
+
+By default, Baker stores `post` hook `stdout` in debug logs only. If you want
+users to see post-hook messages directly in the terminal (for example, welcome
+text or next-step instructions), enable `post_hook_print_stdout`:
+
+```yaml
+post_hook_filename: post.py
+post_hook_runner:
+  - python3
+post_hook_print_stdout: true
+```
+
+When enabled, Baker prints the post-hook `stdout` to the screen after the hook
+finishes. Keep in mind this output becomes visible in CI logs and terminal
+history, so hooks should avoid printing secrets.
+
 ### Available Platform Variables
 
 Baker provides these platform variables that can be used in templates and hook filenames:

@@ -16,6 +16,7 @@ use log::debug;
 use serde_json::json;
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 use walkdir::WalkDir;
@@ -112,6 +113,7 @@ impl Runner {
         )?;
         let pre_hook_runner = config.pre_hook_runner.clone();
         let post_hook_runner = config.post_hook_runner.clone();
+        let post_hook_print_stdout = config.post_hook_print_stdout;
 
         let execute_hooks = self.confirm_hook_execution(
             context.template_root(),
@@ -139,6 +141,7 @@ impl Runner {
             execute_hooks,
             pre_hook_runner,
             post_hook_runner,
+            post_hook_print_stdout,
         })
     }
 
@@ -239,7 +242,16 @@ impl Runner {
             )?;
 
             if let Some(result) = post_hook_stdout {
-                log::debug!("Post-hook stdout content: {result}");
+                if hook_plan.post_hook_print_stdout {
+                    log::debug!(
+                        "Post-hook stdout printed to terminal ({} bytes)",
+                        result.len()
+                    );
+                    print!("{result}");
+                    std::io::stdout().flush()?;
+                } else {
+                    log::debug!("Post-hook stdout content: {result}");
+                }
             }
         }
         Ok(())
@@ -452,6 +464,7 @@ struct HookPlan {
     execute_hooks: bool,
     pre_hook_runner: Vec<String>,
     post_hook_runner: Vec<String>,
+    post_hook_print_stdout: bool,
 }
 
 fn render_hook_runner(

@@ -34,6 +34,8 @@ pub struct ConfigV1 {
     pub post_hook_runner: Vec<String>,
     #[serde(default = "get_default_pre_hook_runner")]
     pub pre_hook_runner: Vec<String>,
+    #[serde(default = "get_default_post_hook_print_stdout")]
+    pub post_hook_print_stdout: bool,
     #[serde(default = "get_default_follow_symlinks")]
     pub follow_symlinks: bool,
 }
@@ -110,6 +112,10 @@ fn get_default_pre_hook_runner() -> Vec<String> {
     Vec::new()
 }
 
+fn get_default_post_hook_print_stdout() -> bool {
+    false
+}
+
 fn get_default_loop_separator() -> String {
     DEFAULT_LOOP_SEPARATOR.to_string()
 }
@@ -170,6 +176,25 @@ questions: {}"#;
         let config: Config = serde_yaml::from_str(raw).expect("valid config");
         let Config::V1(cfg) = config;
         assert!(!cfg.follow_symlinks);
+    }
+
+    #[test]
+    fn post_hook_print_stdout_defaults_false() {
+        let raw = r#"schemaVersion: v1
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert!(!cfg.post_hook_print_stdout);
+    }
+
+    #[test]
+    fn post_hook_print_stdout_parses_true() {
+        let raw = r#"schemaVersion: v1
+post_hook_print_stdout: true
+questions: {}"#;
+        let config: Config = serde_yaml::from_str(raw).expect("valid config");
+        let Config::V1(cfg) = config;
+        assert!(cfg.post_hook_print_stdout);
     }
 
     #[test]

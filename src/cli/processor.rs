@@ -288,6 +288,7 @@ mod tests {
                 pre_hook_filename: "pre".into(),
                 post_hook_runner: Vec::new(),
                 pre_hook_runner: Vec::new(),
+                post_hook_print_stdout: false,
                 follow_symlinks,
             },
             skip_confirms,
