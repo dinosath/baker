@@ -112,6 +112,7 @@ impl Runner {
         )?;
         let pre_hook_runner = config.pre_hook_runner.clone();
         let post_hook_runner = config.post_hook_runner.clone();
+        let post_hook_print_stdout = config.post_hook_print_stdout;
 
         let execute_hooks = self.confirm_hook_execution(
             context.template_root(),
@@ -139,6 +140,7 @@ impl Runner {
             execute_hooks,
             pre_hook_runner,
             post_hook_runner,
+            post_hook_print_stdout,
         })
     }
 
@@ -170,6 +172,7 @@ impl Runner {
                 &hook_plan.pre_hook_file,
                 None,
                 &runner,
+                false,
             )
         } else {
             Ok(None)
@@ -236,6 +239,7 @@ impl Runner {
                 &hook_plan.post_hook_file,
                 Some(context.answers()),
                 &runner,
+                hook_plan.post_hook_print_stdout,
             )?;
 
             if let Some(result) = post_hook_stdout {
@@ -452,6 +456,7 @@ struct HookPlan {
     execute_hooks: bool,
     pre_hook_runner: Vec<String>,
     post_hook_runner: Vec<String>,
+    post_hook_print_stdout: bool,
 }
 
 fn render_hook_runner(

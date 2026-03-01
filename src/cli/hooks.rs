@@ -40,6 +40,7 @@ pub fn run_hook<P: AsRef<Path>>(
     hook_path: P,
     answers: Option<&serde_json::Value>,
     runner: &[String],
+    inherit_stdout: bool,
 ) -> Result<Option<String>> {
     let hook_path = hook_path.as_ref();
 
@@ -70,7 +71,7 @@ pub fn run_hook<P: AsRef<Path>>(
 
     let mut child = command
         .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
+        .stdout(if inherit_stdout { Stdio::inherit() } else { Stdio::piped() })
         .stderr(Stdio::inherit())
         .spawn()?;
 
@@ -151,6 +152,7 @@ mod tests {
             &script_path,
             None,
             &["sh".to_string()],
+            false,
         )
         .expect("hook execution")
         .expect("stdout");
@@ -177,10 +179,16 @@ mod tests {
             "-File".to_string(),
         ];
 
-        let output =
-            run_hook(temp_dir.path(), temp_dir.path(), &script_path, None, &runner)
-                .expect("hook execution")
-                .expect("stdout");
+        let output = run_hook(
+            temp_dir.path(),
+            temp_dir.path(),
+            &script_path,
+            None,
+            &runner,
+            false,
+        )
+        .expect("hook execution")
+        .expect("stdout");
 
         assert!(output.contains("windows_runner"));
     }
