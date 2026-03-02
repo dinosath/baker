@@ -1,0 +1,15 @@
+[application]
+name    = "baker-web"
+default_platform = "web"
+
+[web.app]
+title = "Baker — Project Generator"
+
+[web.watcher]
+reload_html = true
+watch_path  = ["src", "assets"]
+
+[web.resource]
+dev    = []
+style  = ["/assets/style.css"]
+script = []
