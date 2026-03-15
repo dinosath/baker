@@ -5,20 +5,18 @@ use crate::{
     },
     config::{Config, ConfigV1},
     error::{Error, Result},
-    ignore::parse_bakerignore_file,
     loader::get_template,
     prompt::confirm,
     renderer::TemplateRenderer,
     template::{get_template_engine, processor::TemplateProcessor},
 };
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use ::ignore::WalkBuilder;
 use log::debug;
 use serde_json::json;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
-use walkdir::WalkDir;
 
 /// Main CLI runner that orchestrates the entire template generation workflow
 pub struct Runner {
@@ -203,9 +201,7 @@ impl Runner {
         context: &GenerationContext,
         engine: &dyn crate::renderer::TemplateRenderer,
     ) -> Result<()> {
-        let bakerignore = parse_bakerignore_file(context.template_root())?;
-
-        let processor = TemplateProcessor::new(engine, context, &bakerignore);
+        let processor = TemplateProcessor::new(engine, context);
 
         let file_processor = FileProcessor::new(processor, context);
         file_processor.process_all_files()
@@ -319,75 +315,29 @@ impl Runner {
         };
 
         debug!("Using import root: {}", import_root.display());
+        debug!("Adding all templates from import root for import/include directives");
 
-        let templates_import_globset =
-            self.build_templates_import_globset(&import_root, &config.template_globs);
-
-        if let Some(globset) = templates_import_globset {
-            debug!("Adding templates from glob patterns: {:?}", &config.template_globs);
-            WalkDir::new(&import_root)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|entry| entry.path().is_file())
-                .filter(|entry| globset.is_match(entry.path()))
-                .filter_map(|entry| {
-                    let path = entry.path();
-                    let rel_path = path.strip_prefix(&import_root).ok()?;
-                    let rel_path_str = rel_path.to_str()?;
-                    fs::read_to_string(path)
-                        .ok()
-                        .map(|content| (rel_path_str.to_owned(), content))
-                })
-                .for_each(|(filename, content)| {
-                    debug!("Adding template: {filename}");
-                    if let Err(e) = engine.add_template(&filename, &content) {
-                        log::warn!("Failed to add template {filename}: {e}");
-                    }
-                });
-        } else {
-            debug!("template_globs is empty. No patterns provided for adding templates in the template engine for import and include.");
-        }
-    }
-
-    /// Constructs a `GlobSet` for matching template files using multiple patterns relative to a root directory.
-    ///
-    /// This function takes a list of glob patterns (such as `*.tpl` or `*.jinja`) and builds a `GlobSet`
-    /// that can be used to efficiently match files within the `template_root` directory. Each pattern is
-    /// joined with the `template_root` to ensure correct matching against absolute file paths.
-    ///
-    /// # Arguments
-    /// * `template_root` - The root directory where template files are located.
-    /// * `patterns` - A list of glob patterns (relative to `template_root`) to match template files.
-    ///
-    /// # Returns
-    /// * `Some(GlobSet)` if at least one pattern is provided and the set is built successfully.
-    /// * `None` if the pattern list is empty.
-    ///
-    fn build_templates_import_globset(
-        &self,
-        template_root: &Path,
-        patterns: &Vec<String>,
-    ) -> Option<GlobSet> {
-        if patterns.is_empty() {
-            return None;
-        }
-        let mut builder = GlobSetBuilder::new();
-        for pattern in patterns {
-            let path_to_ignored_pattern = template_root.join(pattern);
-            let path_str = path_to_ignored_pattern.display().to_string();
-            if let Ok(glob) = Glob::new(&path_str) {
-                builder.add(glob);
-            } else {
-                log::warn!("Invalid glob pattern: {path_str}");
-            }
-        }
-        match builder.build() {
-            Ok(globset) => Some(globset),
-            Err(e) => {
-                log::warn!("Failed to build glob set: {e}");
-                None
-            }
-        }
+        // Load ALL template files for import/include directives.
+        // Note: bakerignore filtering applies only to file generation in processor,
+        // not to template library loading, so we walk without .bakerignore here.
+        WalkBuilder::new(&import_root)
+            .build()
+            .filter_map(|e| e.ok())
+            .filter(|entry| entry.path().is_file())
+            .filter_map(|entry| {
+                let path = entry.path();
+                let rel_path = path.strip_prefix(&import_root).ok()?;
+                let rel_path_str = rel_path.to_str()?;
+                fs::read_to_string(path)
+                    .ok()
+                    .map(|content| (rel_path_str.to_owned(), content))
+            })
+            .for_each(|(filename, content)| {
+                debug!("Adding template: {filename}");
+                if let Err(e) = engine.add_template(&filename, &content) {
+                    log::warn!("Failed to add template {filename}: {e}");
+                }
+            });
     }
 
     fn confirm_hook_execution<P: AsRef<Path>>(
@@ -531,29 +481,6 @@ mod tests {
         let runner = Runner::new(base_args());
         let result = runner.get_output_dir(temp_dir.path(), false, true).unwrap();
         assert_eq!(result, temp_dir.path());
-    }
-
-    #[test]
-    fn build_templates_import_globset_matches_files() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut args = base_args();
-        args.template = temp_dir.path().to_string_lossy().into();
-        let runner = Runner::new(args);
-        let patterns = vec!["**/*.j2".to_string()];
-        let globset =
-            runner.build_templates_import_globset(temp_dir.path(), &patterns).unwrap();
-        let file_path = temp_dir.path().join("example.j2");
-        assert!(globset.is_match(&file_path));
-    }
-
-    #[test]
-    fn build_templates_import_globset_returns_none_when_empty() {
-        let temp_dir = TempDir::new().unwrap();
-        let runner = Runner::new(base_args());
-        let patterns: Vec<String> = Vec::new();
-        assert!(runner
-            .build_templates_import_globset(temp_dir.path(), &patterns)
-            .is_none());
     }
 
     #[test]

@@ -1,10 +1,10 @@
 use crate::error::Result;
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use ignore::overrides::OverrideBuilder;
 use log::{debug, info};
-use std::{fs::read_to_string, path::Path};
+use std::path::Path;
 
 /// Default patterns to always ignore during template processing
-const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
+pub const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
     ".git/**",
     ".git",
     ".hg/**",
@@ -23,41 +23,22 @@ const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
 /// Baker's ignore file name
 pub const IGNORE_FILE: &str = ".bakerignore";
 
-/// Reads and processes the .bakerignore file to create a set of glob patterns.
-pub fn parse_bakerignore_file<P: AsRef<Path>>(template_root: P) -> Result<GlobSet> {
-    let mut builder = GlobSetBuilder::new();
-    let template_root = template_root.as_ref();
-    let bakerignore_path = template_root.join(IGNORE_FILE);
+/// Builds an `Override` matcher from DEFAULT_IGNORE_PATTERNS for use with WalkBuilder.
+/// This uses the ignore crate's native API for pattern matching with high priority.
+/// The .bakerignore file should be registered on WalkBuilder via
+/// `add_custom_ignore_filename(IGNORE_FILE)` and is applied with lower priority.
+pub fn build_ignore_overrides<P: AsRef<Path>>(
+    template_root: P,
+) -> Result<ignore::overrides::Override> {
+    let mut builder = OverrideBuilder::new(template_root);
 
-    // Add default patterns first
-    let mut patterns: Vec<String> = DEFAULT_IGNORE_PATTERNS
-        .iter()
-        .map(|pattern| {
-            let path_to_ignored_pattern = template_root.join(pattern);
-            path_to_ignored_pattern.to_string_lossy().to_string()
-        })
-        .collect();
-
-    // Then add patterns from .bakerignore if it exists
-    if let Ok(contents) = read_to_string(bakerignore_path) {
-        let ignored_patterns: Vec<String> = contents
-            .lines()
-            .map(|line| line.trim())
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(|line| {
-                let path_to_ignored_pattern = template_root.join(line);
-                path_to_ignored_pattern.to_string_lossy().to_string()
-            })
-            .collect();
-        patterns.extend(ignored_patterns);
-    } else {
-        debug!("No .bakerignore file found, using default patterns.");
+    // OverrideBuilder patterns are allow-list globs by default.
+    // Prefix with '!' to exclude/ignore these paths with high priority.
+    debug!("Adding DEFAULT_IGNORE_PATTERNS as overrides: {:?}", DEFAULT_IGNORE_PATTERNS);
+    for pattern in DEFAULT_IGNORE_PATTERNS {
+        builder.add(&format!("!{pattern}"))?;
     }
 
-    for pattern in &patterns {
-        debug!("Adding ignore pattern: {pattern} to globset");
-        builder.add(Glob::new(pattern)?);
-    }
-    info!("Loaded the following ignore patterns from .bakerignore file: {patterns:?}");
+    info!("Built ignore overrides from DEFAULT_IGNORE_PATTERNS");
     Ok(builder.build()?)
 }

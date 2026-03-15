@@ -27,15 +27,12 @@ pub enum Error {
     #[error("Failed to parse YAML: {0}")]
     YAMLParseError(#[from] serde_yaml::Error),
 
-    #[error("Failed to parse glob pattern in .bakerignore file: {0}")]
-    GlobSetParseError(#[from] globset::Error),
-
     // System errors
     #[error("IO operation failed: {0}")]
     IoError(#[from] std::io::Error),
 
     #[error("File system traversal failed: {0}")]
-    WalkdirError(#[from] walkdir::Error),
+    IgnoreWalkError(#[from] ignore::Error),
 
     // External tool errors
     #[error("Git operation failed: {0}")]

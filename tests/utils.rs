@@ -1,9 +1,9 @@
 use baker::cli::SkipConfirm::All;
 use baker::cli::{run, Args};
+use ::ignore::WalkBuilder;
 use log::debug;
 use std::fs;
 use std::path::Path;
-use walkdir::WalkDir;
 
 /// Prints a diff of files and their contents between two directories.
 /// Shows files only present in one directory and content differences for files present in both.
@@ -15,18 +15,18 @@ pub fn print_dir_diff(dir1: &Path, dir2: &Path) {
     let mut files1 = std::collections::HashSet::new();
     let mut files2 = std::collections::HashSet::new();
 
-    for entry in WalkDir::new(dir1)
-        .into_iter()
+    for entry in WalkBuilder::new(dir1)
+        .build()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.file_type().is_some_and(|file_type| file_type.is_file()))
     {
         let rel = entry.path().strip_prefix(dir1).unwrap().to_path_buf();
         files1.insert(rel);
     }
-    for entry in WalkDir::new(dir2)
-        .into_iter()
+    for entry in WalkBuilder::new(dir2)
+        .build()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.file_type().is_some_and(|file_type| file_type.is_file()))
     {
         let rel = entry.path().strip_prefix(dir2).unwrap().to_path_buf();
         files2.insert(rel);

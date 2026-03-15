@@ -5,7 +5,6 @@ use crate::{
     renderer::TemplateRenderer,
     template::operation::{TemplateOperation, TemplateOperation::MultipleWrite, WriteOp},
 };
-use globset::GlobSet;
 use log::debug;
 use regex::Regex;
 use std::fs;
@@ -14,7 +13,6 @@ use std::path::{Path, PathBuf};
 pub struct TemplateProcessor<'a, P: AsRef<Path>> {
     /// Dependencies
     engine: &'a dyn TemplateRenderer,
-    bakerignore: &'a GlobSet,
 
     /// Other
     template_root: P,
@@ -32,11 +30,7 @@ pub struct TemplateConfig<'a> {
 }
 
 impl<'a> TemplateProcessor<'a, PathBuf> {
-    pub fn new(
-        engine: &'a dyn TemplateRenderer,
-        context: &'a GenerationContext,
-        bakerignore: &'a GlobSet,
-    ) -> Self {
+    pub fn new(engine: &'a dyn TemplateRenderer, context: &'a GenerationContext) -> Self {
         let config = context.config();
         let template_config = TemplateConfig {
             template_suffix: config.template_suffix.as_str(),
@@ -46,7 +40,6 @@ impl<'a> TemplateProcessor<'a, PathBuf> {
 
         Self {
             engine,
-            bakerignore,
             template_root: context.template_root().clone(),
             output_root: context.output_root().clone(),
             answers: context.answers(),
@@ -236,10 +229,6 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         let target_exists = target_path.exists();
 
         // Skip if entry is in .bakerignore
-        if self.bakerignore.is_match(&template_entry) {
-            return Ok(TemplateOperation::Ignore { source: rendered_entry });
-        }
-
         // Handle different types of entries
         match (template_entry.is_file(), self.is_template_file(&rendered_entry)) {
             // Template file
@@ -399,7 +388,6 @@ mod tests {
         template::operation::TemplateOperation,
     };
     use fs::File;
-    use globset::GlobSetBuilder;
     use indexmap::IndexMap;
     use serde_json::json;
     use std::io::Write;
@@ -411,7 +399,6 @@ mod tests {
         let template_root = TempDir::new().unwrap();
         let output_root = TempDir::new().unwrap();
         let engine = Box::new(MiniJinjaRenderer::new());
-        let bakerignore = GlobSetBuilder::new().build().unwrap();
 
         let mut context = GenerationContext::new(
             template_root.path().to_path_buf(),
@@ -436,11 +423,7 @@ mod tests {
         context.set_answers(answers);
 
         let context = Box::leak(Box::new(context));
-        let processor = TemplateProcessor::new(
-            Box::leak(engine),
-            context,
-            &*Box::leak(Box::new(bakerignore)),
-        );
+        let processor = TemplateProcessor::new(Box::leak(engine), context);
         (template_root, output_root, processor)
     }
 

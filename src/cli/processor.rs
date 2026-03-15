@@ -1,14 +1,15 @@
 use crate::{
     cli::{context::GenerationContext, SkipConfirm},
     error::{Error, Result},
+    ignore::{build_ignore_overrides, IGNORE_FILE},
     prompt::confirm,
     template::{
         operation::{TemplateOperation, WriteOp},
         processor::TemplateProcessor,
     },
 };
+use ::ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 /// Handles the processing of template files and directories
 pub struct FileProcessor<'a> {
@@ -26,19 +27,27 @@ impl<'a> FileProcessor<'a> {
 
     /// Processes all files in the template directory
     pub fn process_all_files(&self) -> Result<()> {
-        let walker = WalkDir::new(self.context.template_root())
-            .follow_links(self.context.config().follow_symlinks);
+        let template_root = self.context.template_root();
+
+        // Build ignore overrides from DEFAULT_IGNORE_PATTERNS
+        let overrides = build_ignore_overrides(template_root)?;
+
+        // WalkBuilder respects overrides (high priority) and .bakerignore (low priority)
+        let mut walker_builder = WalkBuilder::new(template_root);
+        walker_builder.overrides(overrides);
+        if template_root.join(IGNORE_FILE).is_file() {
+            walker_builder.add_custom_ignore_filename(IGNORE_FILE);
+        }
+        walker_builder.follow_links(self.context.config().follow_symlinks);
+
+        let walker = walker_builder.build();
         for dir_entry in walker {
             let entry = match dir_entry {
                 Ok(e) => e,
                 Err(e) => {
                     // Handle symlink loop errors gracefully - just skip and continue
-                    if e.loop_ancestor().is_some() {
-                        log::warn!(
-                            "Skipping symlink loop detected at '{}' (points back to ancestor '{}')",
-                            e.path().map(|p| p.display().to_string()).unwrap_or_default(),
-                            e.loop_ancestor().map(|p| p.display().to_string()).unwrap_or_default()
-                        );
+                    if e.to_string().contains("File system loop found") {
+                        log::warn!("Skipping symlink loop detected: {e}");
                         continue;
                     }
                     return Err(e.into());
@@ -260,7 +269,6 @@ impl<'a> FileProcessor<'a> {
 mod tests {
     use super::*;
     use crate::renderer::MiniJinjaRenderer;
-    use globset::GlobSetBuilder;
     use indexmap::IndexMap;
     use serde_json::json;
     use tempfile::TempDir;
@@ -272,7 +280,6 @@ mod tests {
         let template_root = TempDir::new().unwrap();
         let output_root = TempDir::new().unwrap();
         let engine = Box::leak(Box::new(MiniJinjaRenderer::new()));
-        let bakerignore = Box::leak(Box::new(GlobSetBuilder::new().build().unwrap()));
 
         let mut context = GenerationContext::new(
             template_root.path().to_path_buf(),
@@ -296,7 +303,7 @@ mod tests {
         );
         context.set_answers(json!({}));
         let context = Box::leak(Box::new(context));
-        let processor = TemplateProcessor::new(&*engine, context, &*bakerignore);
+        let processor = TemplateProcessor::new(&*engine, context);
 
         (template_root, output_root, FileProcessor::new(processor, context))
     }

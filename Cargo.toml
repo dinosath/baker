@@ -15,16 +15,15 @@ log = "0.4"
 env_logger = "0.11"
 thiserror = "2.0"
 serde_json = "1.0"
-indexmap = { version = "2.12", features = ["serde"] }
-minijinja = { version = "2.14", features = [
+indexmap = { version = "2.13", features = ["serde"] }
+minijinja = { version = "2.16", features = [
     "builtins",
     "loop_controls",
     "loader",
     "json",
     "urlencode",
 ] }
-globset = "0.4"
-walkdir = "2.5"
+ignore = "0.4"
 git2 = { version = "0.20", features = ["vendored-openssl", "vendored-libgit2"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
@@ -40,7 +39,7 @@ cruet = "0.15"
 
 [dev-dependencies]
 dir-diff = "0.3"
-tempfile = "3.20"
+tempfile = "3.26"
 test-log = { version = "0.2", features = ["trace", "color"] }
 testcontainers = { version = "0.27", features = ["blocking"] }
 reqwest = { version = "0.13", features = ["blocking", "json"] }
