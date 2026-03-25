@@ -1,5 +1,5 @@
 use baker::cli::SkipConfirm::All;
-use baker::cli::{run, Args};
+use baker::cli::{run, GenerateArgs};
 use log::debug;
 use std::fs;
 use std::path::Path;
@@ -96,18 +96,22 @@ pub fn print_dir_diff(dir1: &Path, dir2: &Path) {
 /// * `answers` - Optional answers for non-interactive prompts.
 pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>) {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let args = Args {
+    let args = GenerateArgs {
         template: template.to_string(),
         output_dir: tmp_dir.path().to_path_buf(),
         force: true,
-        verbose: 2,
         answers: answers.map(|a| a.to_string()),
         answers_file: None,
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,
+        generated_file: None,
+        conflict_style: None,
     };
     run(args).unwrap();
+    // Remove the generated metadata file — its content changes per run (timestamp, hash)
+    // and it is not part of the rendered output contract tested here.
+    let _ = std::fs::remove_file(tmp_dir.path().join(".baker-generated.yaml"));
     let result = dir_diff::is_different(tmp_dir.path(), expected_dir);
     match result {
         Ok(different) => {

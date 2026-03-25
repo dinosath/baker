@@ -1,4 +1,4 @@
-use crate::{cli::SkipConfirm, config::ConfigV1};
+use crate::{cli::SkipConfirm, config::ConfigV1, conflict::ConflictStyle};
 use std::path::PathBuf;
 
 /// Shared state describing a single generation run.
@@ -9,6 +9,10 @@ pub struct GenerationContext {
     answers: Option<serde_json::Value>,
     skip_confirms: Vec<SkipConfirm>,
     dry_run: bool,
+    /// When true the FileProcessor should write conflict markers instead of overwriting.
+    conflict_mode: bool,
+    /// The conflict marker style to use (only relevant when conflict_mode is true).
+    conflict_style: Option<ConflictStyle>,
 }
 
 impl GenerationContext {
@@ -18,8 +22,19 @@ impl GenerationContext {
         config: ConfigV1,
         skip_confirms: Vec<SkipConfirm>,
         dry_run: bool,
+        conflict_mode: bool,
+        conflict_style: Option<ConflictStyle>,
     ) -> Self {
-        Self { template_root, output_root, config, answers: None, skip_confirms, dry_run }
+        Self {
+            template_root,
+            output_root,
+            config,
+            answers: None,
+            skip_confirms,
+            dry_run,
+            conflict_mode,
+            conflict_style,
+        }
     }
 
     pub fn template_root(&self) -> &PathBuf {
@@ -46,6 +61,17 @@ impl GenerationContext {
         self.dry_run
     }
 
+    pub fn conflict_mode(&self) -> bool {
+        self.conflict_mode
+    }
+
+    /// The effective conflict style: CLI/config override, then default.
+    pub fn conflict_style(&self) -> ConflictStyle {
+        self.conflict_style
+            .or(self.config.conflict_marker_style)
+            .unwrap_or_default()
+    }
+
     pub fn set_answers(&mut self, answers: serde_json::Value) {
         self.answers = Some(answers);
     }
@@ -58,3 +84,4 @@ impl GenerationContext {
         self.answers.as_ref()
     }
 }
+

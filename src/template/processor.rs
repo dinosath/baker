@@ -233,7 +233,16 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         let template_entry = template_entry.as_ref().to_path_buf();
         let rendered_entry = self.render_template_entry(&template_entry)?;
         let target_path = self.get_target_path(&rendered_entry, &template_entry)?;
-        let target_exists = target_path.exists();
+        // For template files the output path has the suffix stripped, so we must
+        // compute target_exists after stripping to correctly detect pre-existing files.
+        let final_target_path = if self.is_template_file(&rendered_entry)
+            && !self.is_template_with_loop(&template_entry)
+        {
+            self.remove_template_suffix(&target_path)?
+        } else {
+            target_path.clone()
+        };
+        let target_exists = final_target_path.exists();
 
         // Skip if entry is in .bakerignore
         if self.bakerignore.is_match(&template_entry) {
@@ -263,7 +272,7 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
                     })?;
 
                 Ok(TemplateOperation::Write {
-                    target: self.remove_template_suffix(&target_path)?,
+                    target: final_target_path,
                     content,
                     target_exists,
                 })
@@ -429,9 +438,13 @@ mod tests {
                 pre_hook_runner: Vec::new(),
                 post_hook_print_stdout: false,
                 follow_symlinks: false,
+                generated_file_name: None,
+                conflict_marker_style: None,
             },
             Vec::new(),
             false,
+            false,
+            None,
         );
         context.set_answers(answers);
 

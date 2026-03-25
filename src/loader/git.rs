@@ -1,5 +1,6 @@
 use crate::{
     error::{Error, Result},
+    loader::{LoadedTemplate, TemplateSourceInfo},
     prompt::confirm,
 };
 use std::fs;
@@ -137,8 +138,8 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
     /// Loads a template by cloning a git repository.
     ///
     /// # Returns
-    /// * `Result<PathBuf>` - Path to the cloned repository
-    fn load(&self) -> Result<PathBuf> {
+    /// * `Result<LoadedTemplate>` - Loaded template with path and git source metadata
+    fn load(&self) -> Result<LoadedTemplate> {
         let repo_url = self.repo.as_ref();
 
         log::debug!("Cloning repository '{repo_url}'");
@@ -155,7 +156,9 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
                 fs::remove_dir_all(&clone_path)?;
             } else {
                 log::debug!("Using existing directory '{}'", clone_path.display());
-                return Ok(clone_path);
+                // Still capture git metadata from the existing repo
+                let source = read_git_source_info(repo_url, &clone_path)?;
+                return Ok(LoadedTemplate { root: clone_path, source });
             }
         }
 
@@ -187,11 +190,63 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             Ok(repo) => {
                 // Initialize and update submodules recursively
                 self.init_submodules(&repo, &home)?;
-                Ok(clone_path)
+                let source = extract_source_info_from_repo(repo_url, &repo);
+                Ok(LoadedTemplate { root: clone_path, source })
             }
             Err(e) => Err(Error::Git2Error(e)),
         }
     }
+}
+
+/// Extract `TemplateSourceInfo` from an already-opened `git2::Repository`.
+fn extract_source_info_from_repo(url: &str, repo: &git2::Repository) -> TemplateSourceInfo {
+    let (commit, tag) = match repo.head() {
+        Ok(head) => {
+            let commit = head
+                .peel_to_commit()
+                .map(|c| c.id().to_string())
+                .unwrap_or_default();
+            let tag = find_tag_at_head(repo, &commit);
+            (commit, tag)
+        }
+        Err(_) => (String::new(), None),
+    };
+
+    TemplateSourceInfo::Git { url: url.to_string(), commit, tag }
+}
+
+/// Open an existing repository and extract source info.
+fn read_git_source_info(url: &str, path: &std::path::Path) -> Result<TemplateSourceInfo> {
+    match git2::Repository::open(path) {
+        Ok(repo) => Ok(extract_source_info_from_repo(url, &repo)),
+        Err(_) => {
+            // If we can't open the repo, return minimal info
+            Ok(TemplateSourceInfo::Git {
+                url: url.to_string(),
+                commit: String::new(),
+                tag: None,
+            })
+        }
+    }
+}
+
+/// Find the first tag name pointing at the given commit SHA, if any.
+fn find_tag_at_head(repo: &git2::Repository, head_commit: &str) -> Option<String> {
+    let tags = repo.tag_names(None).ok()?;
+    for tag_name in tags.iter().flatten() {
+        if let Ok(obj) = repo.revparse_single(&format!("refs/tags/{tag_name}")) {
+            let commit_id = if obj.kind() == Some(git2::ObjectType::Tag) {
+                // Annotated tag — peel to the underlying commit
+                obj.peel(git2::ObjectType::Commit).ok().map(|c| c.id().to_string())
+            } else {
+                Some(obj.id().to_string())
+            };
+            if commit_id.as_deref() == Some(head_commit) {
+                return Some(tag_name.to_string());
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

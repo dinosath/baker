@@ -1,5 +1,6 @@
 use crate::{
     cli::{context::GenerationContext, SkipConfirm},
+    conflict::apply_conflict_markers,
     error::{Error, Result},
     prompt::confirm,
     template::{
@@ -110,6 +111,25 @@ impl<'a> FileProcessor<'a> {
         target_exists: bool,
         content: &str,
     ) -> Result<bool> {
+        // Conflict mode: if the file already exists and content differs, merge with markers
+        if self.context.conflict_mode() && target_exists {
+            if let Ok(existing) = std::fs::read_to_string(target) {
+                if existing != content {
+                    let style = self.context.conflict_style();
+                    let merged = apply_conflict_markers(&existing, content, style);
+                    self.write_file(&merged, target)?;
+                    log::info!(
+                        "Conflict markers written to '{}'",
+                        target.display()
+                    );
+                    return Ok(true);
+                }
+                // Content is identical — no-op
+                log::debug!("Skipping unchanged file '{}'", target.display());
+                return Ok(false);
+            }
+        }
+
         let user_confirmed = self.confirm_overwrite(target, target_exists)?;
         if user_confirmed {
             self.write_file(content, target)?;
@@ -123,6 +143,28 @@ impl<'a> FileProcessor<'a> {
         target: &Path,
         target_exists: bool,
     ) -> Result<bool> {
+        if self.context.conflict_mode() && target_exists {
+            // Cannot insert text markers into binary files — warn and skip
+            log::warn!(
+                "Skipping binary file '{}' during update (cannot add conflict markers). \
+                 New version written as '{}.baker-updated'.",
+                target.display(),
+                target.display()
+            );
+            // Write new version alongside as .baker-updated so nothing is lost
+            let updated_path = {
+                let mut p = target.to_path_buf();
+                let new_name = format!(
+                    "{}.baker-updated",
+                    p.file_name().unwrap_or_default().to_string_lossy()
+                );
+                p.set_file_name(new_name);
+                p
+            };
+            self.copy_file(source, &updated_path)?;
+            return Ok(true);
+        }
+
         let user_confirmed = self.confirm_overwrite(target, target_exists)?;
         if user_confirmed {
             self.copy_file(source, target)?;
@@ -139,6 +181,26 @@ impl<'a> FileProcessor<'a> {
 
     fn handle_multiple_write(&self, writes: &[WriteOp]) -> Result<bool> {
         for write in writes {
+            if self.context.conflict_mode() && write.target_exists {
+                if let Ok(existing) = std::fs::read_to_string(&write.target) {
+                    if existing != write.content {
+                        let style = self.context.conflict_style();
+                        let merged =
+                            apply_conflict_markers(&existing, &write.content, style);
+                        self.write_file(&merged, &write.target)?;
+                        log::info!(
+                            "Conflict markers written to '{}'",
+                            write.target.display()
+                        );
+                    } else {
+                        log::debug!(
+                            "Skipping unchanged file '{}'",
+                            write.target.display()
+                        );
+                    }
+                    continue;
+                }
+            }
             let user_confirmed =
                 self.confirm_overwrite(&write.target, write.target_exists)?;
             if user_confirmed {
@@ -290,9 +352,13 @@ mod tests {
                 pre_hook_runner: Vec::new(),
                 post_hook_print_stdout: false,
                 follow_symlinks,
+                generated_file_name: None,
+                conflict_marker_style: None,
             },
             skip_confirms,
             false,
+            false,
+            None,
         );
         context.set_answers(json!({}));
         let context = Box::leak(Box::new(context));

@@ -8,7 +8,7 @@
 //! Run these tests with: `cargo test --test gitea_integration_tests -- --ignored`
 
 use baker::cli::SkipConfirm::All;
-use baker::cli::{run, Args};
+use baker::cli::{run, GenerateArgs};
 use git2::{Cred, PushOptions, RemoteCallbacks, Repository, Signature};
 use reqwest::blocking::Client;
 use serde_json::json;
@@ -666,16 +666,17 @@ fn test_jsonschema_file_template_from_gitea() {
 
     let clone_url = env.clone_url_with_auth(repo_name);
 
-    let args = Args {
+    let args = GenerateArgs {
         template: clone_url,
         output_dir: output_dir.clone(),
         force: true,
-        verbose: 2,
         answers: None,
         answers_file: None,
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,
+        generated_file: None,
+        conflict_style: None,
     };
 
     run(args).expect("Baker run failed");
@@ -866,16 +867,17 @@ fn test_template_with_submodule_schema_file() {
 
     let clone_url = env.clone_url_with_auth(main_repo_name);
 
-    let args = Args {
+    let args = GenerateArgs {
         template: clone_url,
         output_dir: output_dir.clone(),
         force: true,
-        verbose: 2,
         answers: None,
         answers_file: None,
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,
+        generated_file: None,
+        conflict_style: None,
     };
 
     run(args).expect("Baker run failed - submodule schema_file should be accessible");
@@ -1073,16 +1075,17 @@ Entities count: {{ entities | length }}
         r#"{"project_name": "test_app", "entities": {"User": {"name": "User"}}}"#;
     fs::write(&answers_file, answers_content).expect("Failed to write answers file");
 
-    let args = Args {
+    let args = GenerateArgs {
         template: clone_url,
         output_dir: output_dir.clone(),
         force: true,
-        verbose: 2,
         answers: None,
         answers_file: Some(answers_file),
         skip_confirms: vec![All],
         non_interactive: true,
         dry_run: false,
+        generated_file: None,
+        conflict_style: None,
     };
 
     // Run baker - this should succeed because submodules are now initialized

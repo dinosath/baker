@@ -60,6 +60,14 @@ pub enum Error {
     #[error("Cannot process path '{source_path}': {e}")]
     ProcessError { source_path: String, e: String },
 
+    #[error(
+        "Generated metadata file not found at '{path}'. Run 'baker generate' first."
+    )]
+    GeneratedFileNotFound { path: std::path::PathBuf },
+
+    #[error("Template has not changed since last generation (commit/hash unchanged)")]
+    TemplateUnchanged,
+
     // Generic errors
     #[error("{0}")]
     Other(#[from] anyhow::Error),
