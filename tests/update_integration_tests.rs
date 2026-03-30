@@ -8,6 +8,8 @@
 //! Run them explicitly with:
 //!   `cargo test --test update_integration_tests -- --ignored`
 
+mod utils;
+
 use baker::cli::{run, run_update, GenerateArgs, SkipConfirm::All, UpdateArgs};
 use baker::constants::DEFAULT_GENERATED_FILE_NAME;
 use baker::generated;
@@ -16,6 +18,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use tempfile::TempDir;
 use test_log::test;
+use walkdir::WalkDir;
 
 /// Global mutex to serialise all tests that modify the process-wide CWD.
 ///
@@ -111,15 +114,10 @@ fn update_local_template_unchanged_is_noop() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Read the file content before update.
-    let before = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
-
     // Run update — nothing has changed, should be a no-op.
     run_update_in(output_dir.path(), None);
 
-    // The rendered file must be unchanged.
-    let after = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
-    assert_eq!(before, after, "file should not change when template is unchanged");
+    assert_output_matches(output_dir.path(), "tests/expected/update_noop");
 }
 
 // ---------------------------------------------------------------------------
@@ -127,9 +125,6 @@ fn update_local_template_unchanged_is_noop() {
 // ---------------------------------------------------------------------------
 
 /// When the template content changes the update should re-render files.
-/// Because baker cannot distinguish between user edits and template changes, any
-/// file whose on-disk content differs from the newly-rendered content gets conflict
-/// markers.  The caller should resolve them (or simply accept the updated section).
 #[test]
 fn update_local_template_changed_rerenders_files() {
     let template_dir = TempDir::new().unwrap();
@@ -139,23 +134,13 @@ fn update_local_template_changed_rerenders_files() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Verify initial generation.
-    let initial = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
-    assert!(initial.contains("Hello, Alice!"), "unexpected initial content: {initial}");
-
     // Modify the template.
     write_template_file(template_dir.path(), "Greetings, {{name}}!");
 
     // Run update (answers reused from generated metadata, no prompts).
     run_update_in(output_dir.path(), None);
 
-    let updated = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
-    // The newly-rendered content must appear somewhere in the output (either in the
-    // updated section of conflict markers, or outright if no conflict).
-    assert!(
-        updated.contains("Greetings, Alice!"),
-        "updated template output 'Greetings, Alice!' must appear in output; got:\n{updated}"
-    );
+    assert_output_matches(output_dir.path(), "tests/expected/update_rerenders");
 }
 
 // ---------------------------------------------------------------------------
@@ -284,12 +269,7 @@ fn update_local_template_reuses_saved_answers() {
     // Run update — no answers passed; should reuse "Bob" from metadata.
     run_update_in(output_dir.path(), None);
 
-    let content = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
-    // "Bob" must appear in the output (either directly or in the updated section of conflict markers).
-    assert!(
-        content.contains("Bob"),
-        "saved answer 'Bob' should be reused; got:\n{content}"
-    );
+    assert_output_matches(output_dir.path(), "tests/expected/update_reuses_answers");
 }
 
 // ---------------------------------------------------------------------------
@@ -311,12 +291,7 @@ fn update_local_template_cli_answers_override_saved() {
     // Run update with a new answer for "name".
     run_update_in(output_dir.path(), Some(r#"{"name": "Carol"}"#));
 
-    let content = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
-    // "Carol" must appear — either as clean output or in the updated section of conflict markers.
-    assert!(
-        content.contains("Carol"),
-        "CLI override answer 'Carol' should be used; got:\n{content}"
-    );
+    assert_output_matches(output_dir.path(), "tests/expected/update_cli_override");
 }
 
 // ---------------------------------------------------------------------------
@@ -331,8 +306,6 @@ fn update_local_template_dry_run_no_changes() {
 
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
-
-    let before = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
 
     // Modify the template.
     write_template_file(template_dir.path(), "Changed: {{name}}!");
@@ -353,9 +326,48 @@ fn update_local_template_dry_run_no_changes() {
     std::env::set_current_dir(original_dir).unwrap();
     result.unwrap();
 
-    // The file must not have changed.
-    let after = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
-    assert_eq!(before, after, "dry-run must not modify any files");
+    // The file must not have changed — should still match the initial generation.
+    assert_output_matches(output_dir.path(), "tests/expected/update_noop");
+}
+
+// ---------------------------------------------------------------------------
+// Demo template — no change (noop)
+// ---------------------------------------------------------------------------
+
+/// Uses the demo template for initial generation, then runs update without any
+/// template changes.  The output files should remain identical.
+#[test]
+fn update_demo_template_noop() {
+    let template_tmp = copy_to_tmp("examples/demo");
+    let output_dir =
+        generate_into_tmp(template_tmp.path().to_str().unwrap(), Some(DEMO_ANSWERS));
+
+    run_update_in(output_dir.path(), None);
+
+    assert_output_matches(output_dir.path(), "tests/expected/update_demo_noop");
+}
+
+// ---------------------------------------------------------------------------
+// Demo template — content change produces conflict markers
+// ---------------------------------------------------------------------------
+
+/// Uses the demo template for initial generation, replaces its `README.md.baker.j2`
+/// with the updated variant from `tests/templates/update_demo`, then runs update.
+/// The rendered README changes, so the file must contain git-style conflict markers.
+#[test]
+fn update_demo_template_changed() {
+    let template_tmp = copy_to_tmp("examples/demo");
+    let output_dir =
+        generate_into_tmp(template_tmp.path().to_str().unwrap(), Some(DEMO_ANSWERS));
+
+    // Overwrite the README template with the changed version from tests/templates/update_demo.
+    let v2_readme = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/templates/update_demo/README.md.baker.j2");
+    fs::copy(v2_readme, template_tmp.path().join("README.md.baker.j2")).unwrap();
+
+    run_update_in(output_dir.path(), None);
+
+    assert_output_matches(output_dir.path(), "tests/expected/update_demo_changed");
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +418,33 @@ fn update_git_template_unchanged_commit_is_noop() {
 // Template helpers
 // ---------------------------------------------------------------------------
 
+const DEMO_ANSWERS: &str = r#"{"project_name": "demo", "project_author": "demo", "project_slug": "demo", "use_tests": true}"#;
+
+/// Copy a directory tree from `src` (relative to the workspace root) into a
+/// fresh `TempDir` and return it.
+fn copy_to_tmp(src: &str) -> TempDir {
+    let abs_src = Path::new(env!("CARGO_MANIFEST_DIR")).join(src);
+    let tmp = TempDir::new().unwrap();
+    copy_dir_all(&abs_src, tmp.path());
+    tmp
+}
+
+/// Recursively copy all files and directories from `src` into `dst`.
+fn copy_dir_all(src: &Path, dst: &Path) {
+    for entry in WalkDir::new(src).min_depth(1).into_iter().filter_map(Result::ok) {
+        let rel = entry.path().strip_prefix(src).unwrap();
+        let dest = dst.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&dest).unwrap();
+        } else {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::copy(entry.path(), &dest).unwrap();
+        }
+    }
+}
+
 /// Creates a minimal baker template directory:
 ///
 /// ```
@@ -425,4 +464,23 @@ fn create_simple_template(dir: &Path, content: &str) {
 /// Overwrite the template file content without changing the baker.yaml.
 fn write_template_file(dir: &Path, content: &str) {
     fs::write(dir.join("README.md.baker.j2"), content).unwrap();
+}
+
+/// Compare the output directory against an expected directory, ignoring
+/// the `.baker-generated.yaml` metadata file (its content changes per run).
+fn assert_output_matches(output_dir: &Path, expected_dir: &str) {
+    let expected = Path::new(env!("CARGO_MANIFEST_DIR")).join(expected_dir);
+    let _ = fs::remove_file(output_dir.join(DEFAULT_GENERATED_FILE_NAME));
+    let result = dir_diff::is_different(output_dir, &expected);
+    match result {
+        Ok(different) => {
+            if different {
+                utils::print_dir_diff(output_dir, &expected);
+                panic!("Directories differ. See above for details.");
+            }
+        }
+        Err(e) => {
+            panic!("Error comparing directories: {e}");
+        }
+    }
 }

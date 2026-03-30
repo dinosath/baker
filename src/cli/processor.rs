@@ -114,14 +114,18 @@ impl<'a> FileProcessor<'a> {
         // Conflict mode: if the file already exists and content differs, merge with markers
         if self.context.conflict_mode() && target_exists {
             if let Ok(existing) = std::fs::read_to_string(target) {
+                if has_unresolved_conflict_markers(&existing) {
+                    log::warn!(
+                        "Skipping '{}': file already contains unresolved conflict markers.",
+                        target.display()
+                    );
+                    return Ok(false);
+                }
                 if existing != content {
                     let style = self.context.conflict_style();
                     let merged = apply_conflict_markers(&existing, content, style);
                     self.write_file(&merged, target)?;
-                    log::info!(
-                        "Conflict markers written to '{}'",
-                        target.display()
-                    );
+                    log::info!("Conflict markers written to '{}'", target.display());
                     return Ok(true);
                 }
                 // Content is identical — no-op
@@ -144,24 +148,12 @@ impl<'a> FileProcessor<'a> {
         target_exists: bool,
     ) -> Result<bool> {
         if self.context.conflict_mode() && target_exists {
-            // Cannot insert text markers into binary files — warn and skip
+            // Cannot insert text markers into binary files — overwrite directly
             log::warn!(
-                "Skipping binary file '{}' during update (cannot add conflict markers). \
-                 New version written as '{}.baker-updated'.",
-                target.display(),
+                "Overwriting binary file '{}' during update (cannot add conflict markers).",
                 target.display()
             );
-            // Write new version alongside as .baker-updated so nothing is lost
-            let updated_path = {
-                let mut p = target.to_path_buf();
-                let new_name = format!(
-                    "{}.baker-updated",
-                    p.file_name().unwrap_or_default().to_string_lossy()
-                );
-                p.set_file_name(new_name);
-                p
-            };
-            self.copy_file(source, &updated_path)?;
+            self.copy_file(source, target)?;
             return Ok(true);
         }
 
@@ -183,6 +175,13 @@ impl<'a> FileProcessor<'a> {
         for write in writes {
             if self.context.conflict_mode() && write.target_exists {
                 if let Ok(existing) = std::fs::read_to_string(&write.target) {
+                    if has_unresolved_conflict_markers(&existing) {
+                        log::warn!(
+                            "Skipping '{}': file already contains unresolved conflict markers.",
+                            write.target.display()
+                        );
+                        continue;
+                    }
                     if existing != write.content {
                         let style = self.context.conflict_style();
                         let merged =
@@ -318,6 +317,12 @@ impl<'a> FileProcessor<'a> {
     }
 }
 
+/// Returns `true` if `content` contains a baker conflict marker that has not
+/// yet been resolved (i.e. `<<<<<<< current` is still present).
+fn has_unresolved_conflict_markers(content: &str) -> bool {
+    content.contains("<<<<<<< current")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,6 +454,81 @@ mod tests {
         let unrelated_path = PathBuf::from("/some/other/path/file.txt");
         let result = processor.get_template_name(&unrelated_path);
         assert_eq!(result, "/some/other/path/file.txt");
+    }
+
+    fn build_file_processor_conflict_mode() -> (TempDir, TempDir, FileProcessor<'static>)
+    {
+        let template_root = TempDir::new().unwrap();
+        let output_root = TempDir::new().unwrap();
+        let engine = Box::leak(Box::new(MiniJinjaRenderer::new()));
+        let bakerignore = Box::leak(Box::new(GlobSetBuilder::new().build().unwrap()));
+
+        let mut context = GenerationContext::new(
+            template_root.path().to_path_buf(),
+            output_root.path().to_path_buf(),
+            crate::config::ConfigV1 {
+                template_suffix: ".baker.j2".into(),
+                loop_separator: "".into(),
+                loop_content_separator: "".into(),
+                template_globs: Vec::new(),
+                import_root: None,
+                questions: IndexMap::new(),
+                post_hook_filename: "post".into(),
+                pre_hook_filename: "pre".into(),
+                post_hook_runner: Vec::new(),
+                pre_hook_runner: Vec::new(),
+                post_hook_print_stdout: false,
+                follow_symlinks: false,
+                generated_file_name: None,
+                conflict_marker_style: None,
+            },
+            vec![SkipConfirm::All],
+            false,
+            true, // conflict_mode
+            None,
+        );
+        context.set_answers(json!({}));
+        let context = Box::leak(Box::new(context));
+        let processor = TemplateProcessor::new(&*engine, context, &*bakerignore);
+
+        (template_root, output_root, FileProcessor::new(processor, context))
+    }
+
+    #[test]
+    fn handle_write_skips_file_with_existing_conflict_markers() {
+        let (_template_root, output_root, processor) =
+            build_file_processor_conflict_mode();
+        let target = output_root.path().join("main.rs");
+
+        // Simulate a file that already has unresolved baker conflict markers
+        // (as would happen after a previous `baker update` run that was never resolved).
+        let existing_with_markers = "\
+use foo;
+<<<<<<< current
+fn old() {}
+=======
+fn new() {}
+>>>>>>> updated
+";
+        std::fs::write(&target, existing_with_markers).unwrap();
+
+        // Running conflict-mode handle_write again must NOT add another layer of markers.
+        let result = processor.handle_write(&target, true, "fn new() {}\n").unwrap();
+
+        assert!(!result, "should return false (skipped)");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            existing_with_markers,
+            "file content must be unchanged"
+        );
+    }
+
+    #[test]
+    fn has_unresolved_conflict_markers_detects_markers() {
+        assert!(has_unresolved_conflict_markers(
+            "<<<<<<< current\nold\n=======\nnew\n>>>>>>> updated\n"
+        ));
+        assert!(!has_unresolved_conflict_markers("no markers here\n"));
     }
 
     #[test]
