@@ -28,10 +28,6 @@ use walkdir::WalkDir;
 /// the entire duration of each CWD-sensitive helper eliminates the race.
 static CWD_LOCK: Mutex<()> = Mutex::new(());
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /// Run `baker generate` into a fresh temp dir and return the temp dir.
 fn generate_into_tmp(template: &str, answers: Option<&str>) -> TempDir {
     let tmp = TempDir::new().unwrap();
@@ -52,15 +48,17 @@ fn generate_into_tmp(template: &str, answers: Option<&str>) -> TempDir {
 }
 
 /// Read the `.baker-generated.yaml` written inside `dir`.
+///
+/// Canonicalizes the path to handle macOS /var -> /private/var symlinks.
 fn read_meta(dir: &Path) -> baker::generated::BakerGenerated {
-    // Canonicalize so we handle macOS /var -> /private/var symlinks and
-    // any other platform-specific path differences.
     let canonical = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
     generated::read(&canonical, DEFAULT_GENERATED_FILE_NAME).unwrap()
 }
 
 /// Run `baker update` from inside `output_dir` (sets CWD).
+///
 /// Holds `CWD_LOCK` for the entire call so parallel tests don't race.
+/// Always restores CWD even if the update fails.
 fn run_update_in(output_dir: &Path, extra_answers: Option<&str>) {
     let _guard = CWD_LOCK.lock().unwrap();
     let original_dir = std::env::current_dir().unwrap();
@@ -75,7 +73,6 @@ fn run_update_in(output_dir: &Path, extra_answers: Option<&str>) {
         non_interactive: true,
     };
     let result = run_update(args);
-    // Always restore CWD even if the update fails.
     std::env::set_current_dir(original_dir).unwrap();
     result.unwrap();
 }
@@ -99,10 +96,6 @@ fn run_update_in_expect_err(output_dir: &Path) -> String {
     format!("{}", result.unwrap_err())
 }
 
-// ---------------------------------------------------------------------------
-// Local template — no change
-// ---------------------------------------------------------------------------
-
 /// When the template has not changed the update should exit early, and all
 /// existing output files should remain byte-for-byte identical.
 #[test]
@@ -114,15 +107,10 @@ fn update_local_template_unchanged_is_noop() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Run update — nothing has changed, should be a no-op.
     run_update_in(output_dir.path(), None);
 
     assert_output_matches(output_dir.path(), "tests/expected/update_noop");
 }
-
-// ---------------------------------------------------------------------------
-// Local template — content change
-// ---------------------------------------------------------------------------
 
 /// When the template content changes the update should re-render files.
 #[test]
@@ -134,18 +122,12 @@ fn update_local_template_changed_rerenders_files() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Modify the template.
     write_template_file(template_dir.path(), "Greetings, {{name}}!");
 
-    // Run update (answers reused from generated metadata, no prompts).
     run_update_in(output_dir.path(), None);
 
     assert_output_matches(output_dir.path(), "tests/expected/update_rerenders");
 }
-
-// ---------------------------------------------------------------------------
-// Local template — conflict markers when file was user-edited
-// ---------------------------------------------------------------------------
 
 /// When the on-disk file was manually edited AND the template also changed,
 /// the update should write conflict markers into the file.
@@ -158,18 +140,14 @@ fn update_local_template_conflict_markers_on_user_edited_file() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Simulate the user editing the output file.
     fs::write(
         output_dir.path().join("README.md"),
         "Hello, Alice!\nThis line was added by the user.\n",
     )
     .unwrap();
 
-    // Modify the template so the re-rendered content differs from both the
-    // user's version and the original.
     write_template_file(template_dir.path(), "Hi there, {{name}}!");
 
-    // Run update — expect conflict markers to be written.
     run_update_in(output_dir.path(), None);
 
     let content = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
@@ -185,12 +163,10 @@ fn update_local_template_conflict_markers_on_user_edited_file() {
         content.contains(">>>>>>> updated"),
         "conflict marker '>>>>>>> updated' must be present; got:\n{content}"
     );
-    // The user's line must be preserved in the current section.
     assert!(
         content.contains("This line was added by the user."),
         "user-added content must be preserved; got:\n{content}"
     );
-    // The updated template output must appear in the updated section.
     assert!(
         content.contains("Hi there, Alice!"),
         "updated template output must appear; got:\n{content}"
@@ -212,14 +188,12 @@ fn update_local_template_metadata_is_refreshed() {
 
     let before_meta = read_meta(output_dir.path());
 
-    // Change the template.
     write_template_file(template_dir.path(), "Greetings, {{name}}!");
 
     run_update_in(output_dir.path(), None);
 
     let after_meta = read_meta(output_dir.path());
 
-    // The hash stored in the metadata should now reflect the updated template.
     match (&before_meta.template, &after_meta.template) {
         (
             baker::loader::TemplateSourceInfo::Filesystem { hash: old_hash, .. },
@@ -234,10 +208,6 @@ fn update_local_template_metadata_is_refreshed() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Local template — missing .baker-generated.yaml returns an error
-// ---------------------------------------------------------------------------
-
 #[test]
 fn update_fails_when_no_generated_file() {
     let empty_dir = TempDir::new().unwrap();
@@ -250,10 +220,6 @@ fn update_fails_when_no_generated_file() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Local template — answers are reused from metadata
-// ---------------------------------------------------------------------------
-
 #[test]
 fn update_local_template_reuses_saved_answers() {
     let template_dir = TempDir::new().unwrap();
@@ -263,18 +229,12 @@ fn update_local_template_reuses_saved_answers() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Modify the template.
     write_template_file(template_dir.path(), "Dear {{name}}, welcome!");
 
-    // Run update — no answers passed; should reuse "Bob" from metadata.
     run_update_in(output_dir.path(), None);
 
     assert_output_matches(output_dir.path(), "tests/expected/update_reuses_answers");
 }
-
-// ---------------------------------------------------------------------------
-// Local template — CLI answers override saved answers
-// ---------------------------------------------------------------------------
 
 #[test]
 fn update_local_template_cli_answers_override_saved() {
@@ -285,18 +245,12 @@ fn update_local_template_cli_answers_override_saved() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Modify the template.
     write_template_file(template_dir.path(), "Dear {{name}}, welcome!");
 
-    // Run update with a new answer for "name".
     run_update_in(output_dir.path(), Some(r#"{"name": "Carol"}"#));
 
     assert_output_matches(output_dir.path(), "tests/expected/update_cli_override");
 }
-
-// ---------------------------------------------------------------------------
-// Local template — dry run does not modify files
-// ---------------------------------------------------------------------------
 
 #[test]
 fn update_local_template_dry_run_no_changes() {
@@ -307,10 +261,8 @@ fn update_local_template_dry_run_no_changes() {
     let output_dir =
         generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
 
-    // Modify the template.
     write_template_file(template_dir.path(), "Changed: {{name}}!");
 
-    // Run update in dry-run mode.
     let _guard = CWD_LOCK.lock().unwrap();
     let original_dir = std::env::current_dir().unwrap();
     std::env::set_current_dir(output_dir.path()).unwrap();
@@ -326,13 +278,8 @@ fn update_local_template_dry_run_no_changes() {
     std::env::set_current_dir(original_dir).unwrap();
     result.unwrap();
 
-    // The file must not have changed — should still match the initial generation.
     assert_output_matches(output_dir.path(), "tests/expected/update_noop");
 }
-
-// ---------------------------------------------------------------------------
-// Demo template — no change (noop)
-// ---------------------------------------------------------------------------
 
 /// Uses the demo template for initial generation, then runs update without any
 /// template changes.  The output files should remain identical.
@@ -346,10 +293,6 @@ fn update_demo_template_noop() {
 
     assert_output_matches(output_dir.path(), "tests/expected/update_demo_noop");
 }
-
-// ---------------------------------------------------------------------------
-// Demo template — content change produces conflict markers
-// ---------------------------------------------------------------------------
 
 /// Uses the demo template for initial generation, replaces its `README.md.baker.j2`
 /// with the updated variant from `tests/templates/update_demo`, then runs update.
@@ -369,10 +312,6 @@ fn update_demo_template_changed() {
 
     assert_output_matches(output_dir.path(), "tests/expected/update_demo_changed");
 }
-
-// ---------------------------------------------------------------------------
-// Git-based template update — requires Docker/Gitea
-// ---------------------------------------------------------------------------
 
 /// Tests updating from a real git repository where we push a new commit.
 ///
@@ -413,10 +352,6 @@ fn update_git_template_unchanged_commit_is_noop() {
         "git update test requires Docker; run with -- --ignored and a live Gitea instance"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Template helpers
-// ---------------------------------------------------------------------------
 
 const DEMO_ANSWERS: &str = r#"{"project_name": "demo", "project_author": "demo", "project_slug": "demo", "use_tests": true}"#;
 

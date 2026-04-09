@@ -331,7 +331,6 @@ impl Runner {
         config: &ConfigV1,
         engine: &mut dyn TemplateRenderer,
     ) {
-        // Determine the import root directory
         let import_root = if let Some(ref import_root_str) = config.import_root {
             let import_path = Path::new(import_root_str);
             if import_path.is_absolute() {

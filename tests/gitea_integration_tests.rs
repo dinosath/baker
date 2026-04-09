@@ -22,20 +22,16 @@ use testcontainers::{
     GenericImage, ImageExt,
 };
 
-/// Gitea container configuration
 const GITEA_IMAGE: &str = "gitea/gitea";
 const GITEA_TAG: &str = "1.25-rootless";
 const GITEA_HTTP_PORT: u16 = 3000;
 
-/// Test user credentials for Gitea
 const TEST_USER: &str = "testuser";
 const TEST_PASSWORD: &str = "Password123!";
 const TEST_EMAIL: &str = "test@example.com";
 
-/// Shared Gitea instance for all tests
 static GITEA_INSTANCE: OnceLock<SharedGiteaEnv> = OnceLock::new();
 
-/// Shared Gitea environment that persists across all tests
 struct SharedGiteaEnv {
     #[allow(dead_code)]
     container: testcontainers::core::Container<GenericImage>,
@@ -43,7 +39,6 @@ struct SharedGiteaEnv {
     client: Client,
 }
 
-// Safety: The container and client are thread-safe for our read-only access patterns
 unsafe impl Sync for SharedGiteaEnv {}
 unsafe impl Send for SharedGiteaEnv {}
 
@@ -79,15 +74,12 @@ impl SharedGiteaEnv {
             .build()
             .expect("Failed to create HTTP client");
 
-        // Wait for Gitea to be ready
         if !wait_for_gitea_ready(&base_url, &client, 60) {
             return Err("Gitea failed to become ready".into());
         }
 
-        // Create admin user via container exec
         create_admin_user(&container)?;
 
-        // Small delay to ensure user is fully persisted
         std::thread::sleep(std::time::Duration::from_secs(1));
 
         eprintln!("Shared Gitea environment ready at {}", base_url);
@@ -463,7 +455,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 fn test_git_clone_from_gitea() {
     let env = get_shared_gitea();
 
-    // Use unique repo name to avoid conflicts with parallel test runs
     let repo_name = "test-template-clone";
     let repo_url = env.create_repo(repo_name).expect("Failed to create repository");
 
@@ -782,33 +773,26 @@ ssl = {{ database_config.ssl | lower }}
 
     init_and_push_repo(template_dir.path(), &repo_url, TEST_USER, TEST_PASSWORD)?;
 
-    // Now add the submodule
     let repo = Repository::open(template_dir.path())?;
     let workdir = repo.workdir().ok_or("No workdir")?;
 
-    // Clone the submodule repo into schemas directory
     let schemas_path = workdir.join("schemas");
     let submodule_url_with_auth =
         submodule_url.replace("://", &format!("://{}:{}@", TEST_USER, TEST_PASSWORD));
     let submodule_repo =
         git2::Repository::clone(&submodule_url_with_auth, &schemas_path)?;
 
-    // Get the commit ID of the submodule HEAD
     let submodule_head = submodule_repo.head()?.peel_to_commit()?.id();
 
-    // Remove the cloned .git directory - we'll treat this as a submodule
     fs::remove_dir_all(schemas_path.join(".git"))?;
 
-    // Create .gitmodules file manually
     let gitmodules_content =
         format!("[submodule \"schemas\"]\n\tpath = schemas\n\turl = {}\n", submodule_url);
     fs::write(workdir.join(".gitmodules"), &gitmodules_content)?;
 
-    // Stage all changes
     let mut index = repo.index()?;
     index.add_path(Path::new(".gitmodules"))?;
 
-    // Add the submodule directory as a gitlink (mode 160000)
     let entry = git2::IndexEntry {
         ctime: git2::IndexTime::new(0, 0),
         mtime: git2::IndexTime::new(0, 0),
@@ -898,10 +882,6 @@ fn test_template_with_submodule_schema_file() {
     );
     assert!(output_content.contains("port = 5432"), "Should contain port 5432");
 
-    // Note: The schemas directory may or may not exist in output depending on
-    // whether baker initializes submodules and whether .bakerignore is applied.
-    // The key assertion is that the schema_file validation worked (above assertions).
-
     eprintln!(
         "Successfully generated project from template with submodule schema_file via Gitea!"
     );
@@ -925,13 +905,11 @@ fn test_template_with_submodule_schema_file() {
 fn test_submodule_schema_file_initialization() {
     let env = get_shared_gitea();
 
-    // Step 1: Create a schema repository containing the schema file
     let schema_repo_name = "common-templates-schema";
     let schema_repo_url =
         env.create_repo(schema_repo_name).expect("Failed to create schema repository");
     eprintln!("Schema repository created at: {}", schema_repo_url);
 
-    // Create and push schema content to the schema repo
     let schema_dir = TempDir::new().expect("Failed to create schema temp dir");
     let schema_content = r#"{
   "type": "object",
@@ -946,7 +924,6 @@ fn test_submodule_schema_file_initialization() {
     init_and_push_repo(schema_dir.path(), &schema_repo_url, TEST_USER, TEST_PASSWORD)
         .expect("Failed to push schema repo");
 
-    // Step 2: Create the main template repository with a submodule reference
     let main_repo_name = "template-with-schema-submodule";
     let main_repo_url = env
         .create_repo(main_repo_name)
@@ -955,7 +932,6 @@ fn test_submodule_schema_file_initialization() {
 
     let template_dir = TempDir::new().expect("Failed to create template temp dir");
 
-    // baker.yaml references a schema file inside the "templates" submodule
     let baker_yaml = r#"schemaVersion: v1
 
 questions:
@@ -980,15 +956,12 @@ Entities count: {{ entities | length }}
     fs::write(template_dir.path().join("README.md.baker.j2"), template_content)
         .expect("Failed to write template file");
 
-    // Initialize and push the main repo first
     init_and_push_repo(template_dir.path(), &main_repo_url, TEST_USER, TEST_PASSWORD)
         .expect("Failed to push main repo");
 
-    // Step 3: Add the submodule to the main repo
     let repo = Repository::open(template_dir.path()).expect("Failed to open repo");
     let workdir = repo.workdir().expect("No workdir");
 
-    // Clone the schema repo into "templates" directory
     let templates_path = workdir.join("templates");
     let submodule_url_with_auth =
         schema_repo_url.replace("://", &format!("://{}:{}@", TEST_USER, TEST_PASSWORD));
@@ -996,7 +969,6 @@ Entities count: {{ entities | length }}
         git2::Repository::clone(&submodule_url_with_auth, &templates_path)
             .expect("Failed to clone submodule");
 
-    // Get the commit ID of the submodule HEAD
     let submodule_head = submodule_repo
         .head()
         .expect("No HEAD")
@@ -1004,10 +976,8 @@ Entities count: {{ entities | length }}
         .expect("Failed to peel")
         .id();
 
-    // Remove the cloned .git directory - treat as submodule
     fs::remove_dir_all(templates_path.join(".git")).expect("Failed to remove .git");
 
-    // Create .gitmodules file
     let gitmodules_content = format!(
         "[submodule \"templates\"]\n\tpath = templates\n\turl = {}\n",
         schema_repo_url
@@ -1015,16 +985,13 @@ Entities count: {{ entities | length }}
     fs::write(workdir.join(".gitmodules"), &gitmodules_content)
         .expect("Failed to write .gitmodules");
 
-    // Read the current HEAD tree into the index to preserve existing files
     let head_commit =
         repo.head().expect("No HEAD").peel_to_commit().expect("Failed to peel");
     let mut index = repo.index().expect("Failed to get index");
     index.read_tree(&head_commit.tree().expect("No tree")).expect("Failed to read tree");
 
-    // Add the new .gitmodules file
     index.add_path(Path::new(".gitmodules")).expect("Failed to add .gitmodules");
 
-    // Add the submodule directory as a gitlink (mode 160000)
     let entry = git2::IndexEntry {
         ctime: git2::IndexTime::new(0, 0),
         mtime: git2::IndexTime::new(0, 0),
@@ -1062,14 +1029,12 @@ Entities count: {{ entities | length }}
 
     eprintln!("Main template with submodule pushed successfully");
 
-    // Step 4: Now test Baker - clone the repo and try to use it
     let work_dir = TempDir::new().expect("Failed to create work dir");
     let output_dir = work_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
 
     let clone_url = env.clone_url_with_auth(main_repo_name);
 
-    // Create an answers file with entities data that needs schema validation
     let answers_file = work_dir.path().join("answers.json");
     let answers_content =
         r#"{"project_name": "test_app", "entities": {"User": {"name": "User"}}}"#;
@@ -1088,17 +1053,14 @@ Entities count: {{ entities | length }}
         conflict_style: None,
     };
 
-    // Run baker - this should succeed because submodules are now initialized
     let result = run(args);
 
-    // The test verifies that Baker succeeds when submodules are properly initialized
     assert!(
         result.is_ok(),
         "Baker should succeed with submodule initialization. Error: {:?}",
         result.err()
     );
 
-    // Verify the output was generated correctly
     let output_readme = output_dir.join("README.md");
     assert!(output_readme.exists(), "README.md should be generated");
 

@@ -68,7 +68,6 @@ pub struct LoadedTemplate {
 /// # Returns
 /// * `Result<LoadedTemplate>` - Loaded template with path and source metadata
 pub fn get_template(s: &str, skip_overwrite_check: bool) -> Result<LoadedTemplate> {
-    // Check if this is a git repository URL
     let source = if GitLoader::<&str>::is_git_url(s) {
         TemplateSource::Git(s.to_string())
     } else {

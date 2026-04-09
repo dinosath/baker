@@ -20,18 +20,12 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-// ---------------------------------------------------------------------------
 // Public entry point
-// ---------------------------------------------------------------------------
 
 /// Main entry point for `baker update`.
 pub fn run_update(args: UpdateArgs) -> Result<()> {
     UpdateRunner::new(args).run()
 }
-
-// ---------------------------------------------------------------------------
-// Runner
-// ---------------------------------------------------------------------------
 
 struct UpdateRunner {
     args: UpdateArgs,
@@ -42,41 +36,37 @@ impl UpdateRunner {
         Self { args }
     }
 
+    /// Runs the update workflow:
+    /// determines metadata filename, reads saved metadata, re-fetches template,
+    /// compares sources, merges answers, loads config, builds context and engine,
+    /// runs hooks, collects answers, processes templates, and writes updated metadata.
     fn run(self) -> Result<()> {
-        // 1. Determine the generated-metadata filename.
         let file_name = self
             .args
             .generated_file
             .as_deref()
             .unwrap_or(crate::constants::DEFAULT_GENERATED_FILE_NAME);
 
-        // 2. Read the .baker-generated.yaml from the current working directory.
         let cwd = std::env::current_dir()?;
         let meta: BakerGenerated = generated::read(&cwd, file_name)?;
 
         log::info!("Found generated metadata (generated_at={})", meta.generated_at);
 
-        // 3. Re-fetch the template into a temp directory so we can compare.
         let skip_overwrite = self.should_skip_overwrite_prompts();
         let loaded = self.fetch_updated_template(&meta.template, skip_overwrite)?;
 
-        // 4. Compare source hashes / commits to detect changes.
         if self.sources_are_identical(&meta.template, &loaded.source) {
             println!("Template has not changed since last generation — nothing to do.");
             return Ok(());
         }
 
-        // 5. Merge answers: saved → CLI overrides.
         let merged_answers = self.merge_answers(meta.answers.clone())?;
 
-        // 6. Load config from the freshly-fetched template.
         let config = load_and_validate_config(&loaded.root)?;
 
-        // 7. Determine conflict style: CLI flag → config field → default.
         let conflict_style: Option<ConflictStyle> =
             self.args.conflict_style.or(config.conflict_marker_style);
 
-        // 8. Build a GenerationContext in conflict mode.
         let mut context = GenerationContext::new(
             loaded.root.clone(),
             cwd.clone(),
@@ -88,14 +78,11 @@ impl UpdateRunner {
         );
         context.set_answers(merged_answers.clone());
 
-        // 9. Build template engine and add import templates.
         let mut engine = get_template_engine();
         add_templates_in_renderer(&loaded.root, context.config(), &mut engine);
 
-        // 10. Run pre-hook if present.
         let pre_hook_output = self.maybe_run_pre_hook(&context, &engine)?;
 
-        // If the pre-hook produced new answers we merge them in (same logic as generate).
         if let Some(ref hook_json) = pre_hook_output {
             if let Ok(hook_val) = serde_json::from_str::<serde_json::Value>(hook_json) {
                 if let (Some(base), Some(extra)) =
@@ -108,13 +95,6 @@ impl UpdateRunner {
             }
         }
 
-        // 11. Allow collecting missing/new questions introduced in the updated template.
-        //
-        // The saved + CLI-overridden answers are serialised back to a JSON string and
-        // passed as `cli_answers` so that `AnswerCollector` uses them as its starting
-        // base.  Any question that already has an answer will be skipped in non-
-        // interactive mode; new questions added to the template since the last
-        // generation will be prompted normally (or use their default in --non-interactive).
         let merged_json_str = serde_json::to_string(context.answers())?;
         let collector =
             AnswerCollector::new(&engine, self.args.non_interactive, &loaded.root);
@@ -126,16 +106,13 @@ impl UpdateRunner {
         )?;
         context.set_answers(final_answers);
 
-        // 12. Process templates (with conflict markers on differing files).
         let bakerignore = parse_bakerignore_file(context.template_root())?;
         let processor = TemplateProcessor::new(&engine, &context, &bakerignore);
         let file_processor = FileProcessor::new(processor, &context);
         file_processor.process_all_files()?;
 
-        // 13. Run post-hook if present.
         self.maybe_run_post_hook(&context, &engine)?;
 
-        // 14. Write updated .baker-generated.yaml.
         if context.dry_run() {
             log::info!(
                 "[DRY RUN] Would write updated generated metadata to '{}'",
@@ -159,8 +136,10 @@ impl UpdateRunner {
         Ok(())
     }
 
-    // -- Template re-fetching -----------------------------------------------
-
+    /// Re-fetches the template from its original source.
+    ///
+    /// For git sources, clones into a temp directory (leaked until process exit) so the
+    /// user's working directory is not clobbered. For filesystem sources, loads directly.
     fn fetch_updated_template(
         &self,
         stored: &TemplateSourceInfo,
@@ -168,16 +147,9 @@ impl UpdateRunner {
     ) -> Result<crate::loader::LoadedTemplate> {
         match stored {
             TemplateSourceInfo::Git { url, .. } => {
-                // Clone fresh into a temp directory so we don't clobber the
-                // working directory clone the user may have.
                 let tmp = tempfile::TempDir::new()?;
                 let tmp_path = tmp.path().to_path_buf();
-                // We clone into a sub-directory so the GitLoader's repo-name
-                // extraction works correctly.
                 let loaded = clone_git_into_tmp(url, &tmp_path)?;
-                // Keep the TempDir alive until we're done by leaking it — the
-                // OS will clean it up at process exit.  This avoids lifetime
-                // issues while keeping the code simple.
                 std::mem::forget(tmp);
                 Ok(loaded)
             }
@@ -186,8 +158,6 @@ impl UpdateRunner {
             }
         }
     }
-
-    // -- Hash / commit comparison -------------------------------------------
 
     fn sources_are_identical(
         &self,
@@ -207,15 +177,13 @@ impl UpdateRunner {
         }
     }
 
-    // -- Answer merging -----------------------------------------------------
-
+    /// Merges saved answers with CLI overrides (--answers-file, then --answers).
     fn merge_answers(&self, saved: serde_json::Value) -> Result<serde_json::Value> {
         let mut base = match saved {
             serde_json::Value::Object(m) => m,
             _ => serde_json::Map::new(),
         };
 
-        // Apply --answers-file override
         if let Some(ref path) = self.args.answers_file {
             let content = std::fs::read_to_string(path)?;
             if let Ok(serde_json::Value::Object(extra)) =
@@ -225,7 +193,6 @@ impl UpdateRunner {
             }
         }
 
-        // Apply --answers (inline JSON) override
         if let Some(ref answers_str) = self.args.answers {
             let raw = if answers_str == crate::constants::STDIN_INDICATOR {
                 let mut buf = String::new();
@@ -244,8 +211,6 @@ impl UpdateRunner {
         Ok(serde_json::Value::Object(base))
     }
 
-    // -- Determine skip flags -----------------------------------------------
-
     fn should_skip_overwrite_prompts(&self) -> bool {
         use crate::cli::SkipConfirm;
         self.args.skip_confirms.contains(&SkipConfirm::All)
@@ -257,8 +222,6 @@ impl UpdateRunner {
         self.args.skip_confirms.contains(&SkipConfirm::All)
             || self.args.skip_confirms.contains(&SkipConfirm::Hooks)
     }
-
-    // -- Hook helpers (minimal — mirrored from Runner) ----------------------
 
     fn maybe_run_pre_hook(
         &self,
@@ -381,9 +344,7 @@ impl UpdateRunner {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Standalone helpers
-// ---------------------------------------------------------------------------
 
 fn load_and_validate_config(template_root: &PathBuf) -> Result<ConfigV1> {
     let config = Config::load_config(template_root)?;
@@ -456,19 +417,19 @@ fn add_templates_in_renderer(
 }
 
 /// Clone a git repository into a sub-directory of `parent` and return its `LoadedTemplate`.
+///
+/// Temporarily changes CWD to `parent` because GitLoader clones into a relative
+/// path (repo name) derived from the URL. CWD is always restored afterwards.
 fn clone_git_into_tmp(url: &str, parent: &Path) -> Result<crate::loader::LoadedTemplate> {
     use crate::loader::git::GitLoader;
     use crate::loader::interface::TemplateLoader;
 
-    // GitLoader clones into a relative path (repo name) from the *current* dir,
-    // so we temporarily change into `parent`.
     let original_dir = std::env::current_dir()?;
     std::fs::create_dir_all(parent)?;
     std::env::set_current_dir(parent)?;
 
     let result = GitLoader::new(url.to_string(), true).load();
 
-    // Always restore the original directory
     let _ = std::env::set_current_dir(&original_dir);
 
     result

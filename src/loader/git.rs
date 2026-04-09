@@ -32,7 +32,6 @@ impl<S: AsRef<str>> GitLoader<S> {
             return "template".to_string();
         }
 
-        // Handle SSH format: git@host:user/repo or user@host:user/repo
         if repo_url.contains('@') && repo_url.contains(':') && !repo_url.contains("://") {
             if let Some(colon_pos) = repo_url.rfind(':') {
                 let path_part = &repo_url[colon_pos + 1..];
@@ -47,7 +46,6 @@ impl<S: AsRef<str>> GitLoader<S> {
             }
         }
 
-        // Handle standard URLs (HTTPS, git://, etc.)
         let result =
             repo_url.split('/').next_back().unwrap_or("").trim_end_matches(".git");
 
@@ -65,16 +63,15 @@ impl<S: AsRef<str>> GitLoader<S> {
     /// - Git URLs: git://github.com/user/repo
     /// - SSH URLs: git@github.com:user/repo
     /// - SSH URLs with explicit protocol: ssh://git@github.com/user/repo
+    ///
+    /// SSH format is detected via heuristic: contains `@` and `:` but not `://`,
+    /// with a valid-looking hostname (contains `.`) and a path containing `/`.
     pub fn is_git_url(s: &str) -> bool {
-        // Try to parse as standard URL first
         if let Ok(url) = Url::parse(s) {
             return matches!(url.scheme(), "http" | "https" | "git" | "ssh");
         }
 
-        // Check for SSH format: git@host:path or user@host:path
         if s.contains('@') && s.contains(':') && !s.contains("://") {
-            // Simple heuristic: if it contains @ and : but not ://, it's likely SSH format
-            // Also check that the part after @ and before : looks like a hostname
             if let Some(at_pos) = s.find('@') {
                 if let Some(colon_pos) = s.rfind(':') {
                     if colon_pos > at_pos {
@@ -82,10 +79,6 @@ impl<S: AsRef<str>> GitLoader<S> {
                         let host_part = &s[at_pos + 1..colon_pos];
                         let path_part = &s[colon_pos + 1..];
 
-                        // More strict validation:
-                        // - user part should look like a username (git, or valid username)
-                        // - host should look like a hostname (contains . or known git hosts)
-                        // - path should look like a repository path (contains /)
                         return !user_part.is_empty()
                             && !host_part.is_empty()
                             && !path_part.is_empty()
@@ -156,7 +149,6 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
                 fs::remove_dir_all(&clone_path)?;
             } else {
                 log::debug!("Using existing directory '{}'", clone_path.display());
-                // Still capture git metadata from the existing repo
                 let source = read_git_source_info(repo_url, &clone_path)?;
                 return Ok(LoadedTemplate { root: clone_path, source });
             }
@@ -167,7 +159,6 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             Error::Other(anyhow::anyhow!("Failed to get HOME directory: {}", e))
         })?;
 
-        // Set up authentication callbacks
         let mut callbacks = git2::RemoteCallbacks::new();
         callbacks.credentials(|_url, username_from_url, _allowed_types| {
             git2::Cred::ssh_key(
@@ -178,17 +169,14 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             )
         });
 
-        // Configure fetch options with callbacks
         let mut fetch_opts = git2::FetchOptions::new();
         fetch_opts.remote_callbacks(callbacks);
 
-        // Set up and perform clone
         let mut builder = git2::build::RepoBuilder::new();
         builder.fetch_options(fetch_opts);
 
         match builder.clone(repo_url, &clone_path) {
             Ok(repo) => {
-                // Initialize and update submodules recursively
                 self.init_submodules(&repo, &home)?;
                 let source = extract_source_info_from_repo(repo_url, &repo);
                 Ok(LoadedTemplate { root: clone_path, source })
@@ -217,27 +205,26 @@ fn extract_source_info_from_repo(
 }
 
 /// Open an existing repository and extract source info.
+///
+/// Falls back to minimal info (URL only) if the repository cannot be opened.
 fn read_git_source_info(url: &str, path: &std::path::Path) -> Result<TemplateSourceInfo> {
     match git2::Repository::open(path) {
         Ok(repo) => Ok(extract_source_info_from_repo(url, &repo)),
-        Err(_) => {
-            // If we can't open the repo, return minimal info
-            Ok(TemplateSourceInfo::Git {
-                url: url.to_string(),
-                commit: String::new(),
-                tag: None,
-            })
-        }
+        Err(_) => Ok(TemplateSourceInfo::Git {
+            url: url.to_string(),
+            commit: String::new(),
+            tag: None,
+        }),
     }
 }
 
 /// Find the first tag name pointing at the given commit SHA, if any.
+/// Annotated tags are peeled to their underlying commit before comparison.
 fn find_tag_at_head(repo: &git2::Repository, head_commit: &str) -> Option<String> {
     let tags = repo.tag_names(None).ok()?;
     for tag_name in tags.iter().flatten() {
         if let Ok(obj) = repo.revparse_single(&format!("refs/tags/{tag_name}")) {
             let commit_id = if obj.kind() == Some(git2::ObjectType::Tag) {
-                // Annotated tag — peel to the underlying commit
                 obj.peel(git2::ObjectType::Commit).ok().map(|c| c.id().to_string())
             } else {
                 Some(obj.id().to_string())

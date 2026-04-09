@@ -33,7 +33,6 @@ impl<'a> FileProcessor<'a> {
             let entry = match dir_entry {
                 Ok(e) => e,
                 Err(e) => {
-                    // Handle symlink loop errors gracefully - just skip and continue
                     if e.loop_ancestor().is_some() {
                         log::warn!(
                             "Skipping symlink loop detected at '{}' (points back to ancestor '{}')",
@@ -85,7 +84,8 @@ impl<'a> FileProcessor<'a> {
             .unwrap_or_else(|| path.display().to_string().replace('\\', "/"))
     }
 
-    /// Handles a single file operation (write, copy, create directory, or ignore)
+    /// Handles a single file operation (write, copy, create directory, or ignore).
+    /// Symlink loop errors are skipped gracefully.
     fn handle_file_operation(&self, file_operation: &TemplateOperation) -> Result<bool> {
         log::debug!("Handling file operation: {file_operation:?}");
         match file_operation {
@@ -105,13 +105,17 @@ impl<'a> FileProcessor<'a> {
         }
     }
 
+    /// Writes content to a target file.
+    ///
+    /// In conflict mode, merges with markers if the file exists and content differs.
+    /// Skips files that already contain unresolved conflict markers.
+    /// Identical content is treated as a no-op.
     fn handle_write(
         &self,
         target: &Path,
         target_exists: bool,
         content: &str,
     ) -> Result<bool> {
-        // Conflict mode: if the file already exists and content differs, merge with markers
         if self.context.conflict_mode() && target_exists {
             if let Ok(existing) = std::fs::read_to_string(target) {
                 if has_unresolved_conflict_markers(&existing) {
@@ -128,7 +132,6 @@ impl<'a> FileProcessor<'a> {
                     log::info!("Conflict markers written to '{}'", target.display());
                     return Ok(true);
                 }
-                // Content is identical — no-op
                 log::debug!("Skipping unchanged file '{}'", target.display());
                 return Ok(false);
             }
@@ -141,6 +144,9 @@ impl<'a> FileProcessor<'a> {
         Ok(user_confirmed)
     }
 
+    /// Copies a file from source to target.
+    ///
+    /// In conflict mode, binary files are overwritten directly (cannot insert text markers).
     fn handle_copy(
         &self,
         source: &Path,
@@ -148,7 +154,6 @@ impl<'a> FileProcessor<'a> {
         target_exists: bool,
     ) -> Result<bool> {
         if self.context.conflict_mode() && target_exists {
-            // Cannot insert text markers into binary files — overwrite directly
             log::warn!(
                 "Overwriting binary file '{}' during update (cannot add conflict markers).",
                 target.display()
@@ -223,7 +228,6 @@ impl<'a> FileProcessor<'a> {
             return Ok(());
         }
 
-        // Ensure parent directory exists
         if let Some(parent) = dest_path.parent() {
             self.create_dir_all(parent)?;
         }
@@ -241,9 +245,10 @@ impl<'a> FileProcessor<'a> {
     }
 
     /// When follow_symlinks is enabled, copy the content the symlink points to.
+    /// Resolves relative targets against the symlink's parent directory.
+    /// Falls back to recreating the symlink for directories.
     fn copy_followed_symlink(&self, source_link: &Path, dest_path: &Path) -> Result<()> {
         let target_rel = std::fs::read_link(source_link)?;
-        // Resolve relative targets against the symlink's parent directory.
         let resolved_target = if target_rel.is_relative() {
             source_link.parent().unwrap_or_else(|| Path::new("")).join(&target_rel)
         } else {
@@ -254,7 +259,6 @@ impl<'a> FileProcessor<'a> {
             std::fs::copy(&resolved_target, dest_path)?;
             return Ok(());
         }
-        // For now, if it's a directory (or other), fall back to recreating symlink.
         self.copy_symlink(source_link, dest_path)
     }
 
@@ -292,7 +296,6 @@ impl<'a> FileProcessor<'a> {
             return Ok(());
         }
 
-        // Ensure parent directory exists
         if let Some(parent) = dest_path.parent() {
             self.create_dir_all(parent)?;
         }
@@ -500,8 +503,6 @@ mod tests {
             build_file_processor_conflict_mode();
         let target = output_root.path().join("main.rs");
 
-        // Simulate a file that already has unresolved baker conflict markers
-        // (as would happen after a previous `baker update` run that was never resolved).
         let existing_with_markers = "\
 use foo;
 <<<<<<< current
@@ -512,7 +513,6 @@ fn new() {}
 ";
         std::fs::write(&target, existing_with_markers).unwrap();
 
-        // Running conflict-mode handle_write again must NOT add another layer of markers.
         let result = processor.handle_write(&target, true, "fn new() {}\n").unwrap();
 
         assert!(!result, "should return false (skipped)");

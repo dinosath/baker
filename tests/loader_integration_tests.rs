@@ -8,13 +8,11 @@ use tempfile::TempDir;
 
 #[test]
 fn test_local_loader_existing_directory() {
-    // Create a temporary directory with some content
     let temp_dir = TempDir::new().unwrap();
     let template_path = temp_dir.path().join("test_template");
     fs::create_dir(&template_path).unwrap();
     fs::write(template_path.join("baker.yaml"), "project_name: test").unwrap();
 
-    // Test loading existing template
     let loader = LocalLoader::new(&template_path);
     let result = loader.load();
     assert!(result.is_ok());
@@ -31,13 +29,11 @@ fn test_local_loader_non_existing_directory() {
 
 #[test]
 fn test_template_source_from_string_local_path() {
-    // Create a temporary directory
     let temp_dir = TempDir::new().unwrap();
     let template_path = temp_dir.path().join("test_template");
     fs::create_dir(&template_path).unwrap();
     fs::write(template_path.join("baker.yaml"), "project_name: test").unwrap();
 
-    // Test that local paths are correctly identified and loaded
     let result = get_template(template_path.to_str().unwrap(), true);
     assert!(result.is_ok());
     assert_eq!(result.unwrap().root, template_path);

@@ -109,8 +109,6 @@ pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>)
         conflict_style: None,
     };
     run(args).unwrap();
-    // Remove the generated metadata file — its content changes per run (timestamp, hash)
-    // and it is not part of the rendered output contract tested here.
     let _ = std::fs::remove_file(tmp_dir.path().join(".baker-generated.yaml"));
     let result = dir_diff::is_different(tmp_dir.path(), expected_dir);
     match result {

@@ -7,7 +7,6 @@ use crate::constants::exit_codes;
 /// Represents all possible errors that can occur in Baker
 #[derive(Error, Debug)]
 pub enum Error {
-    // Configuration errors
     #[error("Config validation failed: {0}")]
     ConfigValidation(String),
 
@@ -16,11 +15,9 @@ pub enum Error {
     )]
     ConfigNotFound { template_dir: String, config_files: String },
 
-    // User interaction errors
     #[error("Dialoguer error: {0}")]
     DialoguerError(#[from] DialoguerError),
 
-    // Parsing errors
     #[error("Failed to parse JSON: {0}")]
     JSONParseError(#[from] serde_json::Error),
 
@@ -30,25 +27,21 @@ pub enum Error {
     #[error("Failed to parse glob pattern in .bakerignore file: {0}")]
     GlobSetParseError(#[from] globset::Error),
 
-    // System errors
     #[error("IO operation failed: {0}")]
     IoError(#[from] std::io::Error),
 
     #[error("File system traversal failed: {0}")]
     WalkdirError(#[from] walkdir::Error),
 
-    // External tool errors
     #[error("Git operation failed: {0}")]
     Git2Error(#[from] git2::Error),
 
     #[error("Template rendering failed: {0}")]
     MinijinjaError(#[from] minijinja::Error),
 
-    // Process execution errors
     #[error("Hook script '{script}' failed with exit code: {status}")]
     HookExecutionError { script: String, status: ExitStatus },
 
-    // Business logic errors
     #[error(
         "Output directory '{output_dir}' already exists. Use --force to overwrite it."
     )]
@@ -68,7 +61,6 @@ pub enum Error {
     #[error("Template has not changed since last generation (commit/hash unchanged)")]
     TemplateUnchanged,
 
-    // Generic errors
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }

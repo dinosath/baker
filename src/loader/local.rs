@@ -43,11 +43,13 @@ impl<P: AsRef<std::path::Path>> TemplateLoader for LocalLoader<P> {
 }
 
 /// Compute a deterministic SHA-256 hash of all template files, excluding .bakerignore patterns.
+///
+/// File paths are collected and sorted for determinism. Both relative path and
+/// file contents are fed into the hash so that renames are detected.
 pub fn compute_directory_hash(template_root: &std::path::Path) -> Result<String> {
     let ignore_set = parse_bakerignore_file(template_root)?;
     let mut hasher = Sha256::new();
 
-    // Collect and sort all matching file paths for determinism
     let mut paths: Vec<PathBuf> = WalkDir::new(template_root)
         .follow_links(false)
         .into_iter()
@@ -60,7 +62,6 @@ pub fn compute_directory_hash(template_root: &std::path::Path) -> Result<String>
     paths.sort();
 
     for file_path in paths {
-        // Hash the relative path so renames are detected
         if let Ok(rel) = file_path.strip_prefix(template_root) {
             hasher.update(rel.to_string_lossy().as_bytes());
             hasher.update(b"\0");

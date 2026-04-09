@@ -100,13 +100,10 @@ impl<'a, P: AsRef<Path>> TemplateProcessor<'a, P> {
         for (template_part, rendered_part) in
             template_path_parts.iter().zip(rendered_path_parts.iter())
         {
-            // Check if a non-empty template part became empty
             if !template_part.is_empty() && rendered_part.is_empty() {
                 return false;
             }
 
-            // Check if a template placeholder at the start of a filename rendered to empty
-            // This catches cases like "{{file_name}}.txt" -> ".txt" or "{{file_name}}.baker.j2" -> ".baker.j2"
             if template_part.starts_with("{{")
                 && !template_part.starts_with("{{.")
                 && rendered_part.starts_with('.')
