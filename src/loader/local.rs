@@ -72,4 +72,3 @@ pub fn compute_directory_hash(template_root: &std::path::Path) -> Result<String>
 
     Ok(hex::encode(hasher.finalize()))
 }
-

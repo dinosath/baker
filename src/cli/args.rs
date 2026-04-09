@@ -194,8 +194,13 @@ mod tests {
     #[test]
     fn parses_generate_with_force() {
         use clap::Parser;
-        let args =
-            Args::parse_from(["baker", "generate", "template_dir", "output_dir", "--force"]);
+        let args = Args::parse_from([
+            "baker",
+            "generate",
+            "template_dir",
+            "output_dir",
+            "--force",
+        ]);
         match args.command {
             Commands::Generate(g) => assert!(g.force),
             _ => panic!("expected Generate"),
@@ -281,4 +286,3 @@ mod tests {
         }
     }
 }
-

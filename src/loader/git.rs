@@ -199,13 +199,14 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
 }
 
 /// Extract `TemplateSourceInfo` from an already-opened `git2::Repository`.
-fn extract_source_info_from_repo(url: &str, repo: &git2::Repository) -> TemplateSourceInfo {
+fn extract_source_info_from_repo(
+    url: &str,
+    repo: &git2::Repository,
+) -> TemplateSourceInfo {
     let (commit, tag) = match repo.head() {
         Ok(head) => {
-            let commit = head
-                .peel_to_commit()
-                .map(|c| c.id().to_string())
-                .unwrap_or_default();
+            let commit =
+                head.peel_to_commit().map(|c| c.id().to_string()).unwrap_or_default();
             let tag = find_tag_at_head(repo, &commit);
             (commit, tag)
         }

@@ -67,9 +67,7 @@ impl GenerationContext {
 
     /// The effective conflict style: CLI/config override, then default.
     pub fn conflict_style(&self) -> ConflictStyle {
-        self.conflict_style
-            .or(self.config.conflict_marker_style)
-            .unwrap_or_default()
+        self.conflict_style.or(self.config.conflict_marker_style).unwrap_or_default()
     }
 
     pub fn set_answers(&mut self, answers: serde_json::Value) {
@@ -84,4 +82,3 @@ impl GenerationContext {
         self.answers.as_ref()
     }
 }
-

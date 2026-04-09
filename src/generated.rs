@@ -1,6 +1,8 @@
 //! Generated metadata file — written to the output directory after every generate run.
 
-use crate::{constants::DEFAULT_GENERATED_FILE_NAME, error::Result, loader::TemplateSourceInfo};
+use crate::{
+    constants::DEFAULT_GENERATED_FILE_NAME, error::Result, loader::TemplateSourceInfo,
+};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -60,9 +62,7 @@ pub fn resolve_file_name<'a>(
     cli_override: Option<&'a str>,
     config_value: Option<&'a str>,
 ) -> &'a str {
-    cli_override
-        .or(config_value)
-        .unwrap_or(DEFAULT_GENERATED_FILE_NAME)
+    cli_override.or(config_value).unwrap_or(DEFAULT_GENERATED_FILE_NAME)
 }
 
 #[cfg(test)]
@@ -122,17 +122,8 @@ mod tests {
 
     #[test]
     fn resolve_file_name_priority() {
-        assert_eq!(
-            resolve_file_name(Some("cli.yaml"), Some("config.yaml")),
-            "cli.yaml"
-        );
-        assert_eq!(
-            resolve_file_name(None, Some("config.yaml")),
-            "config.yaml"
-        );
-        assert_eq!(
-            resolve_file_name(None, None),
-            DEFAULT_GENERATED_FILE_NAME
-        );
+        assert_eq!(resolve_file_name(Some("cli.yaml"), Some("config.yaml")), "cli.yaml");
+        assert_eq!(resolve_file_name(None, Some("config.yaml")), "config.yaml");
+        assert_eq!(resolve_file_name(None, None), DEFAULT_GENERATED_FILE_NAME);
     }
 }
