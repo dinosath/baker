@@ -117,7 +117,8 @@ impl<'a> FileProcessor<'a> {
         content: &str,
     ) -> Result<bool> {
         if self.context.conflict_mode() && target_exists {
-            if let Ok(existing) = std::fs::read_to_string(target) {
+            if let Ok(raw) = std::fs::read_to_string(target) {
+                let existing = normalize_line_endings(&raw);
                 if has_unresolved_conflict_markers(&existing) {
                     log::warn!(
                         "Skipping '{}': file already contains unresolved conflict markers.",
@@ -179,7 +180,8 @@ impl<'a> FileProcessor<'a> {
     fn handle_multiple_write(&self, writes: &[WriteOp]) -> Result<bool> {
         for write in writes {
             if self.context.conflict_mode() && write.target_exists {
-                if let Ok(existing) = std::fs::read_to_string(&write.target) {
+                if let Ok(raw) = std::fs::read_to_string(&write.target) {
+                    let existing = normalize_line_endings(&raw);
                     if has_unresolved_conflict_markers(&existing) {
                         log::warn!(
                             "Skipping '{}': file already contains unresolved conflict markers.",
@@ -289,6 +291,7 @@ impl<'a> FileProcessor<'a> {
     }
 
     /// Write content to a file, creating parent directories if needed.
+    /// Line endings are converted to the platform default before writing.
     fn write_file<P: AsRef<Path>>(&self, content: &str, dest_path: P) -> Result<()> {
         let dest_path = dest_path.as_ref();
 
@@ -300,7 +303,8 @@ impl<'a> FileProcessor<'a> {
             self.create_dir_all(parent)?;
         }
 
-        std::fs::write(dest_path, content).map_err(Error::from)
+        let native = to_native_line_endings(content);
+        std::fs::write(dest_path, native).map_err(Error::from)
     }
 
     /// Create directory and all parent directories if they don't exist.
@@ -324,6 +328,26 @@ impl<'a> FileProcessor<'a> {
 /// yet been resolved (i.e. `<<<<<<< current` is still present).
 fn has_unresolved_conflict_markers(content: &str) -> bool {
     content.contains("<<<<<<< current")
+}
+
+/// Convert all line endings to `\n` so that content rendered internally
+/// (which always uses `\n`) can be compared with content read from disk
+/// (which may use `\r\n` on Windows).
+fn normalize_line_endings(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
+
+/// Convert `\n` line endings to the platform-native separator.
+/// On Windows this produces `\r\n`; everywhere else it is a no-op.
+#[cfg(windows)]
+fn to_native_line_endings(s: &str) -> String {
+    // First normalise to \n, then expand to \r\n.
+    s.replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
+#[cfg(not(windows))]
+fn to_native_line_endings(s: &str) -> String {
+    s.to_string()
 }
 
 #[cfg(test)]
