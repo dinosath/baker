@@ -79,13 +79,22 @@ fn run_update_in(output_dir: &Path, extra_answers: Option<&str>) {
 
 /// Run `baker update` and expect it to return an error (returns the error message).
 fn run_update_in_expect_err(output_dir: &Path) -> String {
+    run_update_in_expect_err_with(output_dir, None, None)
+}
+
+/// Run `baker update` with custom answers/answers_file and expect an error.
+fn run_update_in_expect_err_with(
+    output_dir: &Path,
+    answers: Option<&str>,
+    answers_file: Option<&str>,
+) -> String {
     let _guard = CWD_LOCK.lock().unwrap();
     let original_dir = std::env::current_dir().unwrap();
     std::env::set_current_dir(output_dir).unwrap();
     let args = UpdateArgs {
         generated_file: None,
-        answers: None,
-        answers_file: None,
+        answers: answers.map(|s| s.to_string()),
+        answers_file: answers_file.map(std::path::PathBuf::from),
         conflict_style: None,
         dry_run: false,
         skip_confirms: vec![All],
@@ -350,6 +359,176 @@ fn update_git_template_unchanged_commit_is_noop() {
     //     "Template has not changed since last generation".
     unimplemented!(
         "git update test requires Docker; run with -- --ignored and a live Gitea instance"
+    );
+}
+/// Passing malformed JSON via --answers should return a parse error.
+#[test]
+fn update_errors_on_malformed_answers_json() {
+    let template_dir = TempDir::new().unwrap();
+    create_simple_template(template_dir.path(), "Hello, {{name}}!");
+    let answers = r#"{"name": "Alice"}"#;
+
+    let output_dir =
+        generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
+
+    write_template_file(template_dir.path(), "Changed: {{name}}!");
+
+    let err = run_update_in_expect_err_with(
+        output_dir.path(),
+        Some(r#"{"name":}"#), // malformed JSON
+        None,
+    );
+    assert!(
+        err.contains("JSON") || err.contains("parse") || err.contains("expected"),
+        "expected a JSON parse error; got: {err}"
+    );
+}
+
+/// Passing valid JSON that is not an object via --answers should return an error.
+#[test]
+fn update_errors_on_non_object_answers() {
+    let template_dir = TempDir::new().unwrap();
+    create_simple_template(template_dir.path(), "Hello, {{name}}!");
+    let answers = r#"{"name": "Alice"}"#;
+
+    let output_dir =
+        generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
+
+    write_template_file(template_dir.path(), "Changed: {{name}}!");
+
+    let err = run_update_in_expect_err_with(
+        output_dir.path(),
+        Some(r#"["not", "an", "object"]"#),
+        None,
+    );
+    assert!(
+        err.contains("not an object") || err.contains("NotObject"),
+        "expected an 'answers not object' error; got: {err}"
+    );
+}
+
+/// Passing a path to a file with malformed JSON via --answers-file should error.
+#[test]
+fn update_errors_on_malformed_answers_file() {
+    let template_dir = TempDir::new().unwrap();
+    create_simple_template(template_dir.path(), "Hello, {{name}}!");
+    let answers = r#"{"name": "Alice"}"#;
+
+    let output_dir =
+        generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
+
+    write_template_file(template_dir.path(), "Changed: {{name}}!");
+
+    let bad_file = output_dir.path().join("bad_answers.json");
+    fs::write(&bad_file, r#"{ broken"#).unwrap();
+
+    let err = run_update_in_expect_err_with(
+        output_dir.path(),
+        None,
+        Some(bad_file.to_str().unwrap()),
+    );
+    assert!(
+        err.contains("JSON") || err.contains("parse") || err.contains("expected"),
+        "expected a JSON parse error; got: {err}"
+    );
+}
+
+/// Passing a valid JSON array via --answers-file should error (not an object).
+#[test]
+fn update_errors_on_non_object_answers_file() {
+    let template_dir = TempDir::new().unwrap();
+    create_simple_template(template_dir.path(), "Hello, {{name}}!");
+    let answers = r#"{"name": "Alice"}"#;
+
+    let output_dir =
+        generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
+
+    write_template_file(template_dir.path(), "Changed: {{name}}!");
+
+    let array_file = output_dir.path().join("array_answers.json");
+    fs::write(&array_file, r#"[1, 2, 3]"#).unwrap();
+
+    let err = run_update_in_expect_err_with(
+        output_dir.path(),
+        None,
+        Some(array_file.to_str().unwrap()),
+    );
+    assert!(
+        err.contains("not an object") || err.contains("NotObject"),
+        "expected an 'answers not object' error; got: {err}"
+    );
+}
+
+/// If .baker-generated.yaml has a version other than "1", update should fail.
+#[test]
+fn update_errors_on_unsupported_metadata_version() {
+    let template_dir = TempDir::new().unwrap();
+    create_simple_template(template_dir.path(), "Hello, {{name}}!");
+    let answers = r#"{"name": "Alice"}"#;
+
+    let output_dir =
+        generate_into_tmp(template_dir.path().to_str().unwrap(), Some(answers));
+
+    let meta_path = output_dir.path().join(DEFAULT_GENERATED_FILE_NAME);
+    let content = fs::read_to_string(&meta_path).unwrap();
+    let tampered = content
+        .replace("version: '1'", "version: '2'")
+        .replace("version: \"1\"", "version: \"2\"");
+    fs::write(&meta_path, tampered).unwrap();
+
+    let err = run_update_in_expect_err(output_dir.path());
+    assert!(
+        err.contains("Unsupported") || err.contains("version"),
+        "expected unsupported version error; got: {err}"
+    );
+}
+
+/// Answers for questions marked as `secret` should not appear in the generated
+/// metadata file.
+#[test]
+fn generate_strips_secret_answers_from_metadata() {
+    let template_dir = TempDir::new().unwrap();
+
+    fs::write(
+        template_dir.path().join("baker.yaml"),
+        r#"schemaVersion: v1
+questions:
+  name:
+    type: str
+    help: Your name
+    default: World
+  password:
+    type: str
+    help: Enter password
+    secret:
+      confirm: false
+"#,
+    )
+    .unwrap();
+    fs::write(template_dir.path().join("README.md.baker.j2"), "Hello, {{name}}!")
+        .unwrap();
+
+    let tmp = TempDir::new().unwrap();
+    let args = GenerateArgs {
+        template: template_dir.path().to_str().unwrap().to_string(),
+        output_dir: tmp.path().to_path_buf(),
+        force: true,
+        answers: Some(r#"{"name": "Alice", "password": "hunter2"}"#.to_string()),
+        answers_file: None,
+        skip_confirms: vec![All],
+        non_interactive: true,
+        dry_run: false,
+        generated_file: None,
+        conflict_style: None,
+    };
+    run(args).unwrap();
+
+    let meta = read_meta(tmp.path());
+    assert_eq!(meta.answers.get("name").unwrap(), "Alice");
+    assert!(
+        meta.answers.get("password").is_none(),
+        "password field should be stripped from metadata; got: {:?}",
+        meta.answers
     );
 }
 

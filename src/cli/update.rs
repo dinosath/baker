@@ -18,6 +18,7 @@ use crate::{
 use globset::{Glob, GlobSetBuilder};
 use serde_json::json;
 use std::path::{Path, PathBuf};
+use tempfile::TempDir;
 use walkdir::WalkDir;
 
 // Public entry point
@@ -53,7 +54,8 @@ impl UpdateRunner {
         log::info!("Found generated metadata (generated_at={})", meta.generated_at);
 
         let skip_overwrite = self.should_skip_overwrite_prompts();
-        let loaded = self.fetch_updated_template(&meta.template, skip_overwrite)?;
+        let (loaded, _tmp_guard) =
+            self.fetch_updated_template(&meta.template, skip_overwrite)?;
 
         if self.sources_are_identical(&meta.template, &loaded.source) {
             println!("Template has not changed since last generation — nothing to do.");
@@ -81,7 +83,10 @@ impl UpdateRunner {
         let mut engine = get_template_engine();
         add_templates_in_renderer(&loaded.root, context.config(), &mut engine);
 
-        let pre_hook_output = self.maybe_run_pre_hook(&context, &engine)?;
+        let execute_hooks = self.confirm_hooks(&context, &engine)?;
+
+        let pre_hook_output =
+            self.maybe_run_pre_hook(&context, &engine, execute_hooks)?;
 
         if let Some(ref hook_json) = pre_hook_output {
             if let Ok(hook_val) = serde_json::from_str::<serde_json::Value>(hook_json) {
@@ -111,7 +116,7 @@ impl UpdateRunner {
         let file_processor = FileProcessor::new(processor, &context);
         file_processor.process_all_files()?;
 
-        self.maybe_run_post_hook(&context, &engine)?;
+        self.maybe_run_post_hook(&context, &engine, execute_hooks)?;
 
         if context.dry_run() {
             log::info!(
@@ -119,7 +124,9 @@ impl UpdateRunner {
                 cwd.join(file_name).display()
             );
         } else {
-            let new_meta = BakerGenerated::new(loaded.source, context.answers().clone());
+            let answers =
+                generated::strip_secret_answers(context.answers(), context.config());
+            let new_meta = BakerGenerated::new(loaded.source, answers);
             generated::write(&cwd, file_name, &new_meta)?;
         }
 
@@ -138,23 +145,24 @@ impl UpdateRunner {
 
     /// Re-fetches the template from its original source.
     ///
-    /// For git sources, clones into a temp directory (leaked until process exit) so the
-    /// user's working directory is not clobbered. For filesystem sources, loads directly.
+    /// For git sources, clones into a temp directory and returns both the loaded
+    /// template and the `TempDir` guard (RAII cleanup on drop). For filesystem
+    /// sources, loads directly.
     fn fetch_updated_template(
         &self,
         stored: &TemplateSourceInfo,
         skip_overwrite: bool,
-    ) -> Result<crate::loader::LoadedTemplate> {
+    ) -> Result<(crate::loader::LoadedTemplate, Option<TempDir>)> {
         match stored {
             TemplateSourceInfo::Git { url, .. } => {
-                let tmp = tempfile::TempDir::new()?;
+                let tmp = TempDir::new()?;
                 let tmp_path = tmp.path().to_path_buf();
                 let loaded = clone_git_into_tmp(url, &tmp_path)?;
-                std::mem::forget(tmp);
-                Ok(loaded)
+                Ok((loaded, Some(tmp)))
             }
             TemplateSourceInfo::Filesystem { path, .. } => {
-                get_template(path.as_str(), skip_overwrite)
+                let loaded = get_template(path.as_str(), skip_overwrite)?;
+                Ok((loaded, None))
             }
         }
     }
@@ -186,10 +194,10 @@ impl UpdateRunner {
 
         if let Some(ref path) = self.args.answers_file {
             let content = std::fs::read_to_string(path)?;
-            if let Ok(serde_json::Value::Object(extra)) =
-                serde_json::from_str::<serde_json::Value>(&content)
-            {
-                base.extend(extra);
+            let parsed: serde_json::Value = serde_json::from_str(&content)?;
+            match parsed {
+                serde_json::Value::Object(extra) => base.extend(extra),
+                _ => return Err(crate::error::Error::AnswersNotObject),
             }
         }
 
@@ -201,10 +209,10 @@ impl UpdateRunner {
             } else {
                 answers_str.clone()
             };
-            if let Ok(serde_json::Value::Object(extra)) =
-                serde_json::from_str::<serde_json::Value>(&raw)
-            {
-                base.extend(extra);
+            let parsed: serde_json::Value = serde_json::from_str(&raw)?;
+            match parsed {
+                serde_json::Value::Object(extra) => base.extend(extra),
+                _ => return Err(crate::error::Error::AnswersNotObject),
             }
         }
 
@@ -227,6 +235,7 @@ impl UpdateRunner {
         &self,
         context: &GenerationContext,
         engine: &dyn TemplateRenderer,
+        execute_hooks: bool,
     ) -> Result<Option<String>> {
         let config = context.config();
         let pre_hook_filename = engine
@@ -249,13 +258,7 @@ impl UpdateRunner {
             return Ok(None);
         }
 
-        let execute = self.confirm_hook_execution(
-            context.template_root(),
-            self.should_skip_hook_prompts(),
-            &pre_hook_filename,
-        )?;
-
-        if execute {
+        if execute_hooks {
             let runner = render_hook_runner(
                 engine,
                 &config.pre_hook_runner,
@@ -278,6 +281,7 @@ impl UpdateRunner {
         &self,
         context: &GenerationContext,
         engine: &dyn TemplateRenderer,
+        execute_hooks: bool,
     ) -> Result<()> {
         let config = context.config();
         let post_hook_filename = engine
@@ -300,13 +304,7 @@ impl UpdateRunner {
             return Ok(());
         }
 
-        let execute = self.confirm_hook_execution(
-            context.template_root(),
-            self.should_skip_hook_prompts(),
-            &post_hook_filename,
-        )?;
-
-        if execute {
+        if execute_hooks {
             let runner = render_hook_runner(
                 engine,
                 &config.post_hook_runner,
@@ -324,21 +322,53 @@ impl UpdateRunner {
         Ok(())
     }
 
-    fn confirm_hook_execution(
+    /// Single combined prompt for both pre and post hooks (mirrors runner.rs behaviour).
+    fn confirm_hooks(
         &self,
-        template_root: &Path,
-        skip: bool,
-        hook_filename: &str,
+        context: &GenerationContext,
+        engine: &dyn TemplateRenderer,
     ) -> Result<bool> {
-        let hook_file = template_root.join("hooks").join(hook_filename);
-        if !hook_file.exists() {
+        let config = context.config();
+        let pre_hook_filename = engine
+            .render(
+                &config.pre_hook_filename,
+                &json!({}),
+                Some(&config.pre_hook_filename),
+            )
+            .unwrap_or_else(|_| config.pre_hook_filename.clone());
+        let post_hook_filename = engine
+            .render(
+                &config.post_hook_filename,
+                &json!({}),
+                Some(&config.post_hook_filename),
+            )
+            .unwrap_or_else(|_| config.post_hook_filename.clone());
+
+        let pre_hook_file =
+            context.template_root().join("hooks").join(&pre_hook_filename);
+        let post_hook_file =
+            context.template_root().join("hooks").join(&post_hook_filename);
+
+        if !pre_hook_file.exists() && !post_hook_file.exists() {
             return Ok(false);
         }
+
+        if context.dry_run() {
+            return Ok(false);
+        }
+
+        let mut hook_list = String::new();
+        if pre_hook_file.exists() {
+            hook_list.push_str(&format!("{}\n", pre_hook_file.display()));
+        }
+        if post_hook_file.exists() {
+            hook_list.push_str(&format!("{}\n", post_hook_file.display()));
+        }
+
         crate::prompt::confirm(
-            skip,
+            self.should_skip_hook_prompts(),
             format!(
-                "Allow hook '{hook_filename}' from '{}' to execute?",
-                template_root.display()
+                "WARNING: This template contains the following hooks that will execute commands on your system:\n{hook_list}Do you want to run these hooks?",
             ),
         )
     }
@@ -416,21 +446,35 @@ fn add_templates_in_renderer(
         });
 }
 
+/// RAII guard that restores the working directory on drop, even on panic.
+struct CwdGuard {
+    original: PathBuf,
+}
+
+impl CwdGuard {
+    fn new() -> std::io::Result<Self> {
+        Ok(Self { original: std::env::current_dir()? })
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original);
+    }
+}
+
 /// Clone a git repository into a sub-directory of `parent` and return its `LoadedTemplate`.
 ///
 /// Temporarily changes CWD to `parent` because GitLoader clones into a relative
-/// path (repo name) derived from the URL. CWD is always restored afterwards.
+/// path (repo name) derived from the URL. CWD is always restored via RAII guard,
+/// including on panic or early return.
 fn clone_git_into_tmp(url: &str, parent: &Path) -> Result<crate::loader::LoadedTemplate> {
     use crate::loader::git::GitLoader;
     use crate::loader::interface::TemplateLoader;
 
-    let original_dir = std::env::current_dir()?;
+    let _cwd_guard = CwdGuard::new()?;
     std::fs::create_dir_all(parent)?;
     std::env::set_current_dir(parent)?;
 
-    let result = GitLoader::new(url.to_string(), true).load();
-
-    let _ = std::env::set_current_dir(&original_dir);
-
-    result
+    GitLoader::new(url.to_string(), true).load()
 }

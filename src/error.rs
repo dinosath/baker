@@ -58,8 +58,11 @@ pub enum Error {
     )]
     GeneratedFileNotFound { path: std::path::PathBuf },
 
-    #[error("Template has not changed since last generation (commit/hash unchanged)")]
-    TemplateUnchanged,
+    #[error("Unsupported generated metadata version '{found}'. Expected '1'.")]
+    UnsupportedGeneratedVersion { found: String },
+
+    #[error("Answers JSON is not an object")]
+    AnswersNotObject,
 
     #[error("{0}")]
     Other(#[from] anyhow::Error),

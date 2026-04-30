@@ -269,8 +269,9 @@ impl Runner {
                 context.output_root(),
             );
         } else {
-            let data =
-                generated::BakerGenerated::new(source_info, context.answers().clone());
+            let answers =
+                generated::strip_secret_answers(context.answers(), context.config());
+            let data = generated::BakerGenerated::new(source_info, answers);
             generated::write(context.output_root(), file_name, &data)?;
         }
 
