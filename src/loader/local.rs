@@ -73,3 +73,49 @@ pub fn compute_directory_hash(template_root: &std::path::Path) -> Result<String>
 
     Ok(hex::encode(hasher.finalize()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn local_loader_returns_error_if_not_exists() {
+        let loader = LocalLoader::new("does_not_exist_at_all");
+        let result = loader.load();
+        assert!(result.is_err());
+        if let Err(Error::TemplateDoesNotExistsError { template_dir }) = result {
+            assert_eq!(template_dir, "does_not_exist_at_all");
+        } else {
+            panic!("Expected TemplateDoesNotExistsError");
+        }
+    }
+
+    #[test]
+    fn compute_directory_hash_and_load_success() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        fs::write(root.join("file1.txt"), b"hello").unwrap();
+        fs::write(root.join("file2.txt"), b"world").unwrap();
+
+        let hash1 = compute_directory_hash(root).unwrap();
+
+        let loader = LocalLoader::new(root);
+        let loaded = loader.load().unwrap();
+
+        assert_eq!(loaded.root, root.to_path_buf());
+        if let TemplateSourceInfo::Filesystem { path, hash } = loaded.source {
+            assert_eq!(hash, hash1);
+            assert_eq!(path, root.to_string_lossy().to_string());
+        } else {
+            panic!("Expected TemplateSourceInfo::Filesystem");
+        }
+
+        // Changing content should change the hash
+        fs::write(root.join("file1.txt"), b"hello2").unwrap();
+        let hash2 = compute_directory_hash(root).unwrap();
+        assert_ne!(hash1, hash2);
+    }
+}

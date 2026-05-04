@@ -10,23 +10,14 @@
 
 mod utils;
 
-use baker::cli::{run, run_update, GenerateArgs, SkipConfirm::All, UpdateArgs};
+use baker::cli::{run, run_update_in_dir, GenerateArgs, SkipConfirm::All, UpdateArgs};
 use baker::constants::DEFAULT_GENERATED_FILE_NAME;
 use baker::generated;
 use std::fs;
 use std::path::Path;
-use std::sync::Mutex;
 use tempfile::TempDir;
 use test_log::test;
 use walkdir::WalkDir;
-
-/// Global mutex to serialise all tests that modify the process-wide CWD.
-///
-/// `std::env::set_current_dir` is a process-global operation.  Running tests
-/// that change CWD concurrently produces races where one test's `current_dir()`
-/// call returns the directory set by a different test.  Holding this lock for
-/// the entire duration of each CWD-sensitive helper eliminates the race.
-static CWD_LOCK: Mutex<()> = Mutex::new(());
 
 /// Run `baker generate` into a fresh temp dir and return the temp dir.
 fn generate_into_tmp(template: &str, answers: Option<&str>) -> TempDir {
@@ -55,14 +46,8 @@ fn read_meta(dir: &Path) -> baker::generated::BakerGenerated {
     generated::read(&canonical, DEFAULT_GENERATED_FILE_NAME).unwrap()
 }
 
-/// Run `baker update` from inside `output_dir` (sets CWD).
-///
-/// Holds `CWD_LOCK` for the entire call so parallel tests don't race.
-/// Always restores CWD even if the update fails.
+/// Run `baker update` against the generated project rooted at `output_dir`.
 fn run_update_in(output_dir: &Path, extra_answers: Option<&str>) {
-    let _guard = CWD_LOCK.lock().unwrap();
-    let original_dir = std::env::current_dir().unwrap();
-    std::env::set_current_dir(output_dir).unwrap();
     let args = UpdateArgs {
         generated_file: None,
         answers: extra_answers.map(|s| s.to_string()),
@@ -72,9 +57,7 @@ fn run_update_in(output_dir: &Path, extra_answers: Option<&str>) {
         skip_confirms: vec![All],
         non_interactive: true,
     };
-    let result = run_update(args);
-    std::env::set_current_dir(original_dir).unwrap();
-    result.unwrap();
+    run_update_in_dir(args, output_dir.to_path_buf()).unwrap();
 }
 
 /// Run `baker update` and expect it to return an error (returns the error message).
@@ -88,9 +71,6 @@ fn run_update_in_expect_err_with(
     answers: Option<&str>,
     answers_file: Option<&str>,
 ) -> String {
-    let _guard = CWD_LOCK.lock().unwrap();
-    let original_dir = std::env::current_dir().unwrap();
-    std::env::set_current_dir(output_dir).unwrap();
     let args = UpdateArgs {
         generated_file: None,
         answers: answers.map(|s| s.to_string()),
@@ -100,9 +80,7 @@ fn run_update_in_expect_err_with(
         skip_confirms: vec![All],
         non_interactive: true,
     };
-    let result = run_update(args);
-    std::env::set_current_dir(original_dir).unwrap();
-    format!("{}", result.unwrap_err())
+    format!("{}", run_update_in_dir(args, output_dir.to_path_buf()).unwrap_err())
 }
 
 /// When the template has not changed the update should exit early, and all
@@ -272,20 +250,19 @@ fn update_local_template_dry_run_no_changes() {
 
     write_template_file(template_dir.path(), "Changed: {{name}}!");
 
-    let _guard = CWD_LOCK.lock().unwrap();
-    let original_dir = std::env::current_dir().unwrap();
-    std::env::set_current_dir(output_dir.path()).unwrap();
-    let result = run_update(UpdateArgs {
-        generated_file: None,
-        answers: None,
-        answers_file: None,
-        conflict_style: None,
-        dry_run: true,
-        skip_confirms: vec![All],
-        non_interactive: true,
-    });
-    std::env::set_current_dir(original_dir).unwrap();
-    result.unwrap();
+    run_update_in_dir(
+        UpdateArgs {
+            generated_file: None,
+            answers: None,
+            answers_file: None,
+            conflict_style: None,
+            dry_run: true,
+            skip_confirms: vec![All],
+            non_interactive: true,
+        },
+        output_dir.path().to_path_buf(),
+    )
+    .unwrap();
 
     assert_output_matches(output_dir.path(), "tests/expected/update_noop");
 }

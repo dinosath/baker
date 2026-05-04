@@ -94,6 +94,7 @@ pub fn print_dir_diff(dir1: &Path, dir2: &Path) {
 /// * `template` - Path to the template directory.
 /// * `expected_dir` - Path to the directory with expected output.
 /// * `answers` - Optional answers for non-interactive prompts.
+#[allow(dead_code)]
 pub fn run_and_assert(template: &str, expected_dir: &str, answers: Option<&str>) {
     let tmp_dir = tempfile::tempdir().unwrap();
     let args = GenerateArgs {

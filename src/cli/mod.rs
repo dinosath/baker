@@ -11,4 +11,4 @@ pub use args::{
     UpdateArgs,
 };
 pub use runner::run;
-pub use update::run_update;
+pub use update::{run_update, run_update_in_dir};

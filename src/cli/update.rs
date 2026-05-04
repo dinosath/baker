@@ -28,13 +28,26 @@ pub fn run_update(args: UpdateArgs) -> Result<()> {
     UpdateRunner::new(args).run()
 }
 
+/// Update a generated project using an explicit working directory.
+pub fn run_update_in_dir(args: UpdateArgs, working_dir: PathBuf) -> Result<()> {
+    UpdateRunner::with_working_dir(args, working_dir).run()
+}
+
 struct UpdateRunner {
     args: UpdateArgs,
+    working_dir: PathBuf,
 }
 
 impl UpdateRunner {
     fn new(args: UpdateArgs) -> Self {
-        Self { args }
+        Self {
+            args,
+            working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        }
+    }
+
+    fn with_working_dir(args: UpdateArgs, working_dir: PathBuf) -> Self {
+        Self { args, working_dir }
     }
 
     /// Runs the update workflow:
@@ -48,7 +61,7 @@ impl UpdateRunner {
             .as_deref()
             .unwrap_or(crate::constants::DEFAULT_GENERATED_FILE_NAME);
 
-        let cwd = std::env::current_dir()?;
+        let cwd = self.working_dir.clone();
         let meta: BakerGenerated = generated::read(&cwd, file_name)?;
 
         log::info!("Found generated metadata (generated_at={})", meta.generated_at);
@@ -446,35 +459,405 @@ fn add_templates_in_renderer(
         });
 }
 
-/// RAII guard that restores the working directory on drop, even on panic.
-struct CwdGuard {
-    original: PathBuf,
-}
-
-impl CwdGuard {
-    fn new() -> std::io::Result<Self> {
-        Ok(Self { original: std::env::current_dir()? })
-    }
-}
-
-impl Drop for CwdGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.original);
-    }
-}
-
 /// Clone a git repository into a sub-directory of `parent` and return its `LoadedTemplate`.
-///
-/// Temporarily changes CWD to `parent` because GitLoader clones into a relative
-/// path (repo name) derived from the URL. CWD is always restored via RAII guard,
-/// including on panic or early return.
 fn clone_git_into_tmp(url: &str, parent: &Path) -> Result<crate::loader::LoadedTemplate> {
     use crate::loader::git::GitLoader;
-    use crate::loader::interface::TemplateLoader;
 
-    let _cwd_guard = CwdGuard::new()?;
     std::fs::create_dir_all(parent)?;
-    std::env::set_current_dir(parent)?;
+    GitLoader::new(url.to_string(), true).load_into_parent(parent)
+}
 
-    GitLoader::new(url.to_string(), true).load()
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        cli::SkipConfirm, config::Config, loader::TemplateSourceInfo,
+        renderer::TemplateRenderer,
+    };
+    use serde_json::json;
+    use std::{fs, path::Path};
+    use tempfile::tempdir;
+
+    fn default_update_args() -> UpdateArgs {
+        UpdateArgs {
+            generated_file: None,
+            answers: None,
+            answers_file: None,
+            conflict_style: None,
+            dry_run: false,
+            skip_confirms: vec![],
+            non_interactive: false,
+        }
+    }
+
+    fn parse_config(raw: &str) -> ConfigV1 {
+        let config: Config = serde_yaml::from_str(raw).expect("valid config yaml");
+        let Config::V1(v1) = config;
+        v1
+    }
+
+    fn minimal_config() -> ConfigV1 {
+        parse_config(
+            r#"
+schemaVersion: v1
+questions: {}
+"#,
+        )
+    }
+
+    fn init_git_repo(path: &Path) -> String {
+        let repo = git2::Repository::init(path).expect("init repository");
+        fs::write(path.join("README.md"), "hello").expect("write file");
+
+        let mut index = repo.index().expect("open index");
+        index.add_path(Path::new("README.md")).expect("add file to index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let sig = git2::Signature::now("tester", "tester@example.com")
+            .expect("create signature");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .expect("create commit")
+            .to_string()
+    }
+
+    #[test]
+    fn sources_are_identical_checks_git_and_filesystem_variants() {
+        let runner = UpdateRunner::new(default_update_args());
+
+        let git_a = TemplateSourceInfo::Git {
+            url: "https://example.com/repo.git".to_string(),
+            commit: "abc".to_string(),
+            tag: None,
+        };
+        let git_b = TemplateSourceInfo::Git {
+            url: "https://example.com/repo.git".to_string(),
+            commit: "abc".to_string(),
+            tag: Some("v1.0.0".to_string()),
+        };
+        let git_c = TemplateSourceInfo::Git {
+            url: "https://example.com/repo.git".to_string(),
+            commit: "def".to_string(),
+            tag: None,
+        };
+
+        assert!(runner.sources_are_identical(&git_a, &git_b));
+        assert!(!runner.sources_are_identical(&git_a, &git_c));
+
+        let fs_a = TemplateSourceInfo::Filesystem {
+            path: "/tmp/template".to_string(),
+            hash: "111".to_string(),
+        };
+        let fs_b = TemplateSourceInfo::Filesystem {
+            path: "/tmp/template".to_string(),
+            hash: "111".to_string(),
+        };
+        let fs_c = TemplateSourceInfo::Filesystem {
+            path: "/tmp/template".to_string(),
+            hash: "222".to_string(),
+        };
+
+        assert!(runner.sources_are_identical(&fs_a, &fs_b));
+        assert!(!runner.sources_are_identical(&fs_a, &fs_c));
+        assert!(!runner.sources_are_identical(&git_a, &fs_a));
+    }
+
+    #[test]
+    fn merge_answers_merges_saved_file_and_inline_json() {
+        let dir = tempdir().expect("create temp dir");
+        let answers_file = dir.path().join("answers.json");
+        fs::write(&answers_file, r#"{"from_file":2}"#).expect("write answers file");
+
+        let mut args = default_update_args();
+        args.answers_file = Some(answers_file);
+        args.answers = Some(r#"{"inline":3}"#.to_string());
+
+        let runner = UpdateRunner::new(args);
+        let merged = runner.merge_answers(json!({"saved": 1})).expect("merge answers");
+
+        assert_eq!(merged["saved"], json!(1));
+        assert_eq!(merged["from_file"], json!(2));
+        assert_eq!(merged["inline"], json!(3));
+    }
+
+    #[test]
+    fn merge_answers_errors_when_non_object_override_is_used() {
+        let mut args = default_update_args();
+        args.answers = Some("[]".to_string());
+
+        let runner = UpdateRunner::new(args);
+        let err = runner.merge_answers(json!({})).expect_err("expected error");
+
+        assert!(matches!(err, crate::error::Error::AnswersNotObject));
+    }
+
+    #[test]
+    fn merge_answers_uses_empty_object_when_saved_answers_are_not_object() {
+        let mut args = default_update_args();
+        args.answers = Some(r#"{"k":"v"}"#.to_string());
+        let runner = UpdateRunner::new(args);
+
+        let merged = runner.merge_answers(json!("old")).expect("merge should work");
+        assert_eq!(merged, json!({"k": "v"}));
+    }
+
+    #[test]
+    fn skip_prompt_flags_work_for_overwrite_and_hooks() {
+        let mut args = default_update_args();
+        args.skip_confirms = vec![SkipConfirm::Overwrite];
+        let runner = UpdateRunner::new(args);
+        assert!(runner.should_skip_overwrite_prompts());
+        assert!(!runner.should_skip_hook_prompts());
+
+        let mut args = default_update_args();
+        args.skip_confirms = vec![SkipConfirm::Hooks];
+        let runner = UpdateRunner::new(args);
+        assert!(!runner.should_skip_overwrite_prompts());
+        assert!(runner.should_skip_hook_prompts());
+
+        let mut args = default_update_args();
+        args.skip_confirms = vec![SkipConfirm::All];
+        let runner = UpdateRunner::new(args);
+        assert!(runner.should_skip_overwrite_prompts());
+        assert!(runner.should_skip_hook_prompts());
+    }
+
+    #[test]
+    fn load_and_validate_config_handles_valid_and_invalid_configs() {
+        let dir = tempdir().expect("create temp dir");
+
+        fs::write(dir.path().join("baker.yaml"), "schemaVersion: v1\nquestions: {}\n")
+            .expect("write config");
+
+        let valid = load_and_validate_config(&dir.path().to_path_buf())
+            .expect("valid config should load");
+        assert_eq!(valid.template_suffix, ".baker.j2");
+
+        fs::write(
+            dir.path().join("baker.yaml"),
+            "schemaVersion: v1\ntemplate_suffix: invalid\nquestions: {}\n",
+        )
+        .expect("write invalid config");
+
+        let err = load_and_validate_config(&dir.path().to_path_buf())
+            .expect_err("invalid config should fail");
+        assert!(matches!(err, crate::error::Error::ConfigValidation(_)));
+    }
+
+    #[test]
+    fn render_hook_runner_renders_tokens_with_and_without_answers() {
+        let engine = crate::template::get_template_engine();
+
+        let rendered = render_hook_runner(
+            &engine,
+            &["echo".to_string(), "{{ name }}".to_string()],
+            Some(&json!({"name": "baker"})),
+        )
+        .expect("render hook runner with answers");
+
+        assert_eq!(rendered, vec!["echo".to_string(), "baker".to_string()]);
+
+        let rendered_without_answers =
+            render_hook_runner(&engine, &["plain".to_string()], None)
+                .expect("render hook runner without answers");
+        assert_eq!(rendered_without_answers, vec!["plain".to_string()]);
+    }
+
+    #[test]
+    fn add_templates_in_renderer_adds_templates_matching_globs() {
+        let template_dir = tempdir().expect("create temp dir");
+        let import_root = template_dir.path().join("imports");
+        fs::create_dir_all(&import_root).expect("create imports dir");
+
+        fs::write(import_root.join("hello.j2"), "Hello {{ name }}")
+            .expect("write template file");
+        fs::write(import_root.join("skip.txt"), "skip").expect("write non-template file");
+
+        let config = parse_config(
+            r#"
+schemaVersion: v1
+import_root: imports
+template_globs: ["**/*.j2"]
+questions: {}
+"#,
+        );
+
+        let mut engine = crate::template::get_template_engine();
+        add_templates_in_renderer(template_dir.path(), &config, &mut engine);
+
+        let rendered = engine
+            .render("{% include \"hello.j2\" %}", &json!({"name": "World"}), Some("test"))
+            .expect("render include");
+        assert_eq!(rendered, "Hello World");
+    }
+
+    #[test]
+    fn maybe_run_hooks_handles_missing_files_dry_run_and_skip_execution() {
+        let template_dir = tempdir().expect("template dir");
+        let output_dir = tempdir().expect("output dir");
+        let hooks_dir = template_dir.path().join("hooks");
+        fs::create_dir_all(&hooks_dir).expect("create hooks dir");
+        fs::write(hooks_dir.join("pre.sh"), "#!/bin/sh\necho pre\n")
+            .expect("write pre hook");
+        fs::write(hooks_dir.join("post.sh"), "#!/bin/sh\necho post\n")
+            .expect("write post hook");
+
+        let config = parse_config(
+            r#"
+schemaVersion: v1
+pre_hook_filename: pre.sh
+post_hook_filename: post.sh
+questions: {}
+"#,
+        );
+
+        let mut dry_context = GenerationContext::new(
+            template_dir.path().to_path_buf(),
+            output_dir.path().to_path_buf(),
+            config,
+            vec![],
+            true,
+            false,
+            None,
+        );
+        dry_context.set_answers(json!({"name": "baker"}));
+        let runner = UpdateRunner::new(default_update_args());
+        let engine = crate::template::get_template_engine();
+
+        assert_eq!(
+            runner
+                .maybe_run_pre_hook(&dry_context, &engine, true)
+                .expect("dry-run pre hook"),
+            None
+        );
+        runner
+            .maybe_run_post_hook(&dry_context, &engine, true)
+            .expect("dry-run post hook");
+
+        let config = parse_config(
+            r#"
+schemaVersion: v1
+pre_hook_filename: pre.sh
+post_hook_filename: post.sh
+questions: {}
+"#,
+        );
+        let mut normal_context = GenerationContext::new(
+            template_dir.path().to_path_buf(),
+            output_dir.path().to_path_buf(),
+            config,
+            vec![],
+            false,
+            false,
+            None,
+        );
+        normal_context.set_answers(json!({"name": "baker"}));
+
+        assert_eq!(
+            runner
+                .maybe_run_pre_hook(&normal_context, &engine, false)
+                .expect("skip pre hook execution"),
+            None
+        );
+        runner
+            .maybe_run_post_hook(&normal_context, &engine, false)
+            .expect("skip post hook execution");
+    }
+
+    #[test]
+    fn confirm_hooks_respects_missing_hooks_dry_run_and_skip_flag() {
+        let template_dir = tempdir().expect("template dir");
+        let output_dir = tempdir().expect("output dir");
+        let hooks_dir = template_dir.path().join("hooks");
+        fs::create_dir_all(&hooks_dir).expect("create hooks dir");
+
+        let engine = crate::template::get_template_engine();
+
+        // No hooks => false
+        let context_no_hooks = GenerationContext::new(
+            template_dir.path().to_path_buf(),
+            output_dir.path().to_path_buf(),
+            minimal_config(),
+            vec![],
+            false,
+            false,
+            None,
+        );
+        let runner = UpdateRunner::new(default_update_args());
+        assert!(!runner
+            .confirm_hooks(&context_no_hooks, &engine)
+            .expect("confirm hooks with no files"));
+
+        // Hooks present but dry-run => false
+        fs::write(hooks_dir.join("pre"), "#!/bin/sh\n").expect("write pre");
+        let context_dry_run = GenerationContext::new(
+            template_dir.path().to_path_buf(),
+            output_dir.path().to_path_buf(),
+            minimal_config(),
+            vec![],
+            true,
+            false,
+            None,
+        );
+        assert!(!runner
+            .confirm_hooks(&context_dry_run, &engine)
+            .expect("confirm hooks in dry run"));
+
+        // Hooks present and skip flag set => true (no interactive prompt)
+        fs::write(hooks_dir.join("post"), "#!/bin/sh\n").expect("write post");
+        let mut args = default_update_args();
+        args.skip_confirms = vec![SkipConfirm::Hooks];
+        let runner = UpdateRunner::new(args);
+        let context = GenerationContext::new(
+            template_dir.path().to_path_buf(),
+            output_dir.path().to_path_buf(),
+            minimal_config(),
+            vec![],
+            false,
+            false,
+            None,
+        );
+        assert!(runner
+            .confirm_hooks(&context, &engine)
+            .expect("confirm hooks with skip flag"));
+    }
+
+    #[test]
+    fn clone_git_into_tmp_clones_repo_under_parent_directory() {
+        let source_parent = tempdir().expect("source parent");
+        let source_repo = source_parent.path().join("source_repo");
+        fs::create_dir_all(&source_repo).expect("create source repo dir");
+        let _commit = init_git_repo(&source_repo);
+
+        let parent = tempdir().expect("parent dir");
+
+        let loaded = clone_git_into_tmp(
+            source_repo.to_str().expect("source repo path"),
+            parent.path(),
+        )
+        .expect("clone into temp");
+
+        assert!(loaded.root.starts_with(parent.path()));
+        assert!(loaded.root.exists(), "cloned path should exist");
+    }
+
+    #[test]
+    fn fetch_updated_template_loads_filesystem_source() {
+        let template_dir = tempdir().expect("template dir");
+        fs::write(template_dir.path().join("README.md"), "content")
+            .expect("write template file");
+
+        let source = TemplateSourceInfo::Filesystem {
+            path: template_dir.path().to_string_lossy().to_string(),
+            hash: String::new(),
+        };
+
+        let runner = UpdateRunner::new(default_update_args());
+        let (loaded, temp_guard) = runner
+            .fetch_updated_template(&source, true)
+            .expect("load filesystem template");
+
+        assert!(temp_guard.is_none());
+        assert_eq!(loaded.root, template_dir.path().to_path_buf());
+    }
 }

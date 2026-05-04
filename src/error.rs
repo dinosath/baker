@@ -76,3 +76,26 @@ pub fn default_error_handler(err: Error) {
     log::error!("{err}");
     std::process::exit(exit_codes::FAILURE);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let err = Error::ConfigValidation("Missing field".to_string());
+        assert_eq!(err.to_string(), "Config validation failed: Missing field");
+
+        let err = Error::ConfigNotFound {
+            template_dir: "my_template".to_string(),
+            config_files: "baker.yaml, baker.json".to_string(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "Configuration file not found in 'my_template'. Expected one of: baker.yaml, baker.json"
+        );
+
+        let err = Error::AnswersNotObject;
+        assert_eq!(err.to_string(), "Answers JSON is not an object");
+    }
+}

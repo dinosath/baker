@@ -95,28 +95,24 @@ mod tests {
         assert_eq!(format!("{git_source}"), "git repository: 'git@github.com:user/repo'");
     }
 
-    /// Verify that after set_current_dir, current_dir() returns a path where exists() works
-    /// for a file previously written using the non-canonical path.
     #[test]
-    fn test_path_exists_after_set_current_dir() {
+    fn test_get_template_uses_local_loader_for_filesystem_paths() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let non_canonical = tmp.path().to_path_buf();
-        let file = non_canonical.join("test_file2.txt");
-        std::fs::write(&file, "data").unwrap();
+        std::fs::write(
+            tmp.path().join("baker.yaml"),
+            "schemaVersion: v1\nquestions: {}\n",
+        )
+        .unwrap();
 
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&non_canonical).unwrap();
-        let via_current_dir = std::env::current_dir().unwrap();
-        // Restore immediately
-        std::env::set_current_dir(&original_dir).unwrap();
+        let loaded = get_template(tmp.path().to_str().unwrap(), true).unwrap();
 
-        let canonical_file = via_current_dir.join("test_file2.txt");
-        assert!(
-            canonical_file.exists(),
-            "file {:?} should exist (original written to {:?}, current_dir returned {:?})",
-            canonical_file,
-            file,
-            via_current_dir
-        );
+        assert_eq!(loaded.root, tmp.path().to_path_buf());
+        match loaded.source {
+            TemplateSourceInfo::Filesystem { path, hash } => {
+                assert_eq!(path, tmp.path().to_string_lossy().to_string());
+                assert!(!hash.is_empty());
+            }
+            _ => panic!("expected filesystem template source"),
+        }
     }
 }

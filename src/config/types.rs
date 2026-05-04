@@ -62,3 +62,19 @@ pub fn get_default_validation() -> Validation {
         error_message: get_default_error_message(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_values() {
+        assert_eq!(get_default_error_message(), validation::INVALID_ANSWER);
+        assert_eq!(get_default_mismatch_error(), validation::PASSWORDS_MISMATCH);
+        assert_eq!(get_default_condition(), validation::DEFAULT_CONDITION);
+
+        let val = get_default_validation();
+        assert_eq!(val.condition, validation::DEFAULT_CONDITION);
+        assert_eq!(val.error_message, validation::INVALID_ANSWER);
+    }
+}

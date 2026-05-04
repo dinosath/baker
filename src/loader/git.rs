@@ -4,7 +4,7 @@ use crate::{
     prompt::confirm,
 };
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use url::Url;
 
 use crate::loader::interface::TemplateLoader;
@@ -127,23 +127,27 @@ impl<S: AsRef<str>> GitLoader<S> {
     }
 }
 
-impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
-    /// Loads a template by cloning a git repository.
-    ///
-    /// # Returns
-    /// * `Result<LoadedTemplate>` - Loaded template with path and git source metadata
-    fn load(&self) -> Result<LoadedTemplate> {
+impl<S: AsRef<str>> GitLoader<S> {
+    fn default_clone_path(&self) -> Result<PathBuf> {
+        Ok(std::env::current_dir()?.join(Self::extract_repo_name(self.repo.as_ref())))
+    }
+
+    pub(crate) fn load_into_parent(&self, parent: &Path) -> Result<LoadedTemplate> {
+        self.load_into_path(parent.join(Self::extract_repo_name(self.repo.as_ref())))
+    }
+
+    fn load_into_path(&self, clone_path: PathBuf) -> Result<LoadedTemplate> {
         let repo_url = self.repo.as_ref();
 
         log::debug!("Cloning repository '{repo_url}'");
 
-        let repo_name = Self::extract_repo_name(repo_url);
-        let clone_path = PathBuf::from(&repo_name);
-
         if clone_path.exists() {
             let response = confirm(
                 self.skip_overwrite_check,
-                format!("Directory '{repo_name}' already exists. Replace it?"),
+                format!(
+                    "Directory '{}' already exists. Replace it?",
+                    clone_path.display()
+                ),
             )?;
             if response {
                 fs::remove_dir_all(&clone_path)?;
@@ -164,7 +168,7 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             git2::Cred::ssh_key(
                 username_from_url.unwrap_or("git"),
                 None,
-                std::path::Path::new(&format!("{home}/.ssh/id_rsa")),
+                Path::new(&format!("{home}/.ssh/id_rsa")),
                 None,
             )
         });
@@ -183,6 +187,16 @@ impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
             }
             Err(e) => Err(Error::Git2Error(e)),
         }
+    }
+}
+
+impl<S: AsRef<str>> TemplateLoader for GitLoader<S> {
+    /// Loads a template by cloning a git repository.
+    ///
+    /// # Returns
+    /// * `Result<LoadedTemplate>` - Loaded template with path and git source metadata
+    fn load(&self) -> Result<LoadedTemplate> {
+        self.load_into_path(self.default_clone_path()?)
     }
 }
 
@@ -240,6 +254,24 @@ fn find_tag_at_head(repo: &git2::Repository, head_commit: &str) -> Option<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{fs, path::Path};
+    use tempfile::tempdir;
+
+    fn init_git_repo(path: &Path) -> String {
+        let repo = git2::Repository::init(path).expect("init repository");
+        fs::write(path.join("README.md"), "hello").expect("write file");
+
+        let mut index = repo.index().expect("open index");
+        index.add_path(Path::new("README.md")).expect("add file to index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let sig = git2::Signature::now("tester", "tester@example.com")
+            .expect("create signature");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .expect("create commit")
+            .to_string()
+    }
 
     #[test]
     fn test_is_git_url_http() {
@@ -327,5 +359,119 @@ mod tests {
         assert_eq!(GitLoader::<String>::extract_repo_name("invalid-url"), "invalid-url");
         assert_eq!(GitLoader::<String>::extract_repo_name(""), "template");
         assert_eq!(GitLoader::<String>::extract_repo_name("git@host:"), "template");
+    }
+
+    #[test]
+    fn test_extract_source_info_from_repo_and_tag_lookup() {
+        let dir = tempdir().expect("create temp dir");
+        let commit = init_git_repo(dir.path());
+        let repo = git2::Repository::open(dir.path()).expect("open repository");
+        let sig = git2::Signature::now("tester", "tester@example.com")
+            .expect("create signature");
+        let head_obj = repo.revparse_single("HEAD").expect("resolve HEAD");
+        repo.tag("v1.0.0", &head_obj, &sig, "release", false).expect("create tag");
+
+        let source = extract_source_info_from_repo("https://example.com/repo.git", &repo);
+        match source {
+            TemplateSourceInfo::Git { url, commit: found_commit, tag } => {
+                assert_eq!(url, "https://example.com/repo.git");
+                assert_eq!(found_commit, commit);
+                assert_eq!(tag, Some("v1.0.0".to_string()));
+            }
+            _ => panic!("expected git source info"),
+        }
+
+        assert_eq!(find_tag_at_head(&repo, &commit), Some("v1.0.0".to_string()));
+        assert_eq!(find_tag_at_head(&repo, "deadbeef"), None);
+    }
+
+    #[test]
+    fn test_read_git_source_info_handles_repo_and_non_repo_paths() {
+        let repo_dir = tempdir().expect("create repo dir");
+        let commit = init_git_repo(repo_dir.path());
+
+        let source =
+            read_git_source_info("https://example.com/repo.git", repo_dir.path())
+                .expect("read git source info");
+        match source {
+            TemplateSourceInfo::Git { url, commit: found_commit, tag } => {
+                assert_eq!(url, "https://example.com/repo.git");
+                assert_eq!(found_commit, commit);
+                assert!(tag.is_none());
+            }
+            _ => panic!("expected git source info"),
+        }
+
+        let non_repo_dir = tempdir().expect("create non-repo dir");
+        let fallback =
+            read_git_source_info("https://example.com/repo.git", non_repo_dir.path())
+                .expect("read fallback source info");
+        match fallback {
+            TemplateSourceInfo::Git { url, commit, tag } => {
+                assert_eq!(url, "https://example.com/repo.git");
+                assert!(commit.is_empty());
+                assert!(tag.is_none());
+            }
+            _ => panic!("expected git fallback source info"),
+        }
+    }
+
+    #[test]
+    fn test_git_loader_loads_local_repo_and_replaces_existing_directory_when_skipped() {
+        let source_parent = tempdir().expect("create source parent");
+        let source_repo = source_parent.path().join("sample_repo");
+        fs::create_dir_all(&source_repo).expect("create source repo dir");
+        let commit = init_git_repo(&source_repo);
+
+        let workspace = tempdir().expect("create workspace");
+        let repo_name = GitLoader::<String>::extract_repo_name(
+            source_repo.to_str().expect("source repo path"),
+        );
+        let existing_clone_path = workspace.path().join(&repo_name);
+        fs::create_dir_all(&existing_clone_path).expect("create pre-existing dir");
+        fs::write(existing_clone_path.join("old.txt"), "old").expect("write old content");
+
+        let loader = GitLoader::new(
+            source_repo.to_str().expect("source repo path").to_string(),
+            true,
+        );
+        let loaded =
+            loader.load_into_parent(workspace.path()).expect("load local repository");
+
+        assert_eq!(loaded.root, existing_clone_path);
+        assert!(
+            git2::Repository::open(&loaded.root).is_ok(),
+            "cloned repo should be openable as a git repository"
+        );
+        assert!(!loaded.root.join("old.txt").exists(), "old dir should be replaced");
+
+        match loaded.source {
+            TemplateSourceInfo::Git { url, commit: found_commit, tag } => {
+                assert_eq!(url, source_repo.to_string_lossy().to_string());
+                assert_eq!(found_commit, commit);
+                assert!(tag.is_none());
+            }
+            _ => panic!("expected git source info"),
+        }
+    }
+
+    #[test]
+    fn test_load_into_parent_uses_repo_name_for_target_path() {
+        let source_parent = tempdir().expect("create source parent");
+        let source_repo = source_parent.path().join("demo_repo");
+        fs::create_dir_all(&source_repo).expect("create source repo dir");
+        init_git_repo(&source_repo);
+
+        let workspace = tempdir().expect("create workspace");
+        let loader = GitLoader::new(
+            source_repo.to_str().expect("source repo path").to_string(),
+            true,
+        );
+
+        let loaded = loader
+            .load_into_parent(workspace.path())
+            .expect("load local repository into parent");
+
+        assert_eq!(loaded.root, workspace.path().join("demo_repo"));
     }
 }
