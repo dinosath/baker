@@ -335,7 +335,7 @@ fn push_current_branch(
 fn wait_for_gitea_ready(base_url: &str, client: &Client, timeout_secs: u64) -> bool {
     eprintln!("Waiting for Gitea API at {}", base_url);
     for i in 0..timeout_secs {
-        match client.get(&format!("{}/api/v1/version", base_url)).send() {
+        match client.get(format!("{}/api/v1/version", base_url)).send() {
             Ok(response) => {
                 if response.status().is_success() {
                     eprintln!("Gitea API is ready after {} seconds", i);
@@ -416,7 +416,7 @@ fn create_gitea_repo(
     });
 
     let response = client
-        .post(&format!("{}/api/v1/user/repos", base_url))
+        .post(format!("{}/api/v1/user/repos", base_url))
         .basic_auth(TEST_USER, Some(TEST_PASSWORD))
         .json(&create_repo_payload)
         .send()?;

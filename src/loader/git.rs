@@ -55,7 +55,7 @@ impl<S: AsRef<str>> GitLoader<S> {
             if matches!(url.scheme(), "http" | "https" | "git" | "ssh" | "file") {
                 if let Some(name) = url
                     .path_segments()
-                    .and_then(|segments| segments.filter(|s| !s.is_empty()).next_back())
+                    .and_then(|mut segments| segments.rfind(|s| !s.is_empty()))
                 {
                     let name = name.trim_end_matches(".git");
                     if !name.is_empty() {

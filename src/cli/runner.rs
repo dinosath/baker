@@ -502,6 +502,27 @@ fn log_dry_run_action<A: AsRef<Path>>(action: &str, target: A) {
     log::info!("[DRY RUN] {}: {}", action, target.as_ref().display());
 }
 
+/// Produces the user-facing completion string for the current run, accounting for dry-run mode.
+fn completion_message(dry_run: bool, output_root: &Path) -> String {
+    if dry_run {
+        format!(
+            "[DRY RUN] Template processing completed. No files were actually created in {}.",
+            output_root.display()
+        )
+    } else {
+        format!(
+            "Template generation completed successfully in {}.",
+            output_root.display()
+        )
+    }
+}
+
+/// Main entry point for `baker generate`
+pub fn run(args: GenerateArgs) -> Result<()> {
+    let runner = Runner::new(args);
+    runner.run()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -614,25 +635,4 @@ mod tests {
 
         assert_eq!(result, vec!["python3".to_string(), "-u".to_string()]);
     }
-}
-
-/// Produces the user-facing completion string for the current run, accounting for dry-run mode.
-fn completion_message(dry_run: bool, output_root: &Path) -> String {
-    if dry_run {
-        format!(
-            "[DRY RUN] Template processing completed. No files were actually created in {}.",
-            output_root.display()
-        )
-    } else {
-        format!(
-            "Template generation completed successfully in {}.",
-            output_root.display()
-        )
-    }
-}
-
-/// Main entry point for `baker generate`
-pub fn run(args: GenerateArgs) -> Result<()> {
-    let runner = Runner::new(args);
-    runner.run()
 }
