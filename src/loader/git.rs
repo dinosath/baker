@@ -36,18 +36,46 @@ impl<S: AsRef<str>> GitLoader<S> {
             if let Some(colon_pos) = repo_url.rfind(':') {
                 let path_part = &repo_url[colon_pos + 1..];
                 if !path_part.is_empty() {
-                    return path_part
+                    let name = path_part
                         .split('/')
                         .next_back()
                         .unwrap_or("template")
-                        .trim_end_matches(".git")
-                        .to_string();
+                        .trim_end_matches(".git");
+                    return if name.is_empty() {
+                        "template".to_string()
+                    } else {
+                        name.to_string()
+                    };
+                }
+            }
+            return "template".to_string();
+        }
+
+        if let Ok(url) = Url::parse(repo_url) {
+            if matches!(url.scheme(), "http" | "https" | "git" | "ssh" | "file") {
+                if let Some(name) = url
+                    .path_segments()
+                    .and_then(|segments| segments.filter(|s| !s.is_empty()).next_back())
+                {
+                    let name = name.trim_end_matches(".git");
+                    if !name.is_empty() {
+                        return name.to_string();
+                    }
                 }
             }
         }
 
+        let path_name = Path::new(repo_url)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(repo_url);
+        let path_name = path_name.trim_end_matches(".git");
+        if !path_name.is_empty() && path_name != repo_url {
+            return path_name.to_string();
+        }
+
         let result =
-            repo_url.split('/').next_back().unwrap_or("").trim_end_matches(".git");
+            repo_url.rsplit(['/', '\\']).next().unwrap_or("").trim_end_matches(".git");
 
         if result.is_empty() || result.contains('@') || result.contains(':') {
             "template".to_string()
@@ -391,6 +419,19 @@ mod tests {
         assert_eq!(GitLoader::<String>::extract_repo_name("invalid-url"), "invalid-url");
         assert_eq!(GitLoader::<String>::extract_repo_name(""), "template");
         assert_eq!(GitLoader::<String>::extract_repo_name("git@host:"), "template");
+    }
+
+    #[test]
+    fn test_extract_repo_name_local_paths() {
+        assert_eq!(GitLoader::<String>::extract_repo_name("/tmp/demo_repo"), "demo_repo");
+        assert_eq!(
+            GitLoader::<String>::extract_repo_name("C:\\Users\\runner\\demo_repo"),
+            "demo_repo"
+        );
+        assert_eq!(
+            GitLoader::<String>::extract_repo_name("file:///tmp/demo_repo.git"),
+            "demo_repo"
+        );
     }
 
     #[test]
