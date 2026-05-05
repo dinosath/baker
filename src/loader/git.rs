@@ -95,32 +95,77 @@ impl<S: AsRef<str>> GitLoader<S> {
         false
     }
 
+    fn home_dir() -> Option<PathBuf> {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+            .or_else(|| {
+                let home_drive = std::env::var_os("HOMEDRIVE")?;
+                let home_path = std::env::var_os("HOMEPATH")?;
+                let mut path = PathBuf::from(home_drive);
+                path.push(home_path);
+                Some(path)
+            })
+    }
+
+    fn remote_callbacks() -> git2::RemoteCallbacks<'static> {
+        let home_dir = Self::home_dir();
+
+        let mut callbacks = git2::RemoteCallbacks::new();
+        callbacks.credentials(move |url, username_from_url, allowed_types| {
+            if allowed_types.contains(git2::CredentialType::USERNAME) {
+                return git2::Cred::username(username_from_url.unwrap_or("git"));
+            }
+
+            if let Ok(config) = git2::Config::open_default() {
+                if let Ok(cred) =
+                    git2::Cred::credential_helper(&config, url, username_from_url)
+                {
+                    return Ok(cred);
+                }
+            }
+
+            let username = username_from_url.unwrap_or("git");
+
+            if allowed_types.contains(git2::CredentialType::SSH_KEY) {
+                if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+                    return Ok(cred);
+                }
+
+                if let Some(home_dir) = home_dir.as_ref() {
+                    let key_path = home_dir.join(".ssh").join("id_rsa");
+                    if key_path.exists() {
+                        if let Ok(cred) =
+                            git2::Cred::ssh_key(username, None, &key_path, None)
+                        {
+                            return Ok(cred);
+                        }
+                    }
+                }
+            }
+
+            git2::Cred::default()
+        });
+
+        callbacks
+    }
+
     /// Recursively initializes and updates all submodules in a repository.
-    fn init_submodules(&self, repo: &git2::Repository, home: &str) -> Result<()> {
+    fn init_submodules(&self, repo: &git2::Repository) -> Result<()> {
         for mut submodule in repo.submodules()? {
             let submodule_name = submodule.name().unwrap_or("unknown").to_string();
             log::debug!("Initializing submodule: {}", submodule_name);
             submodule.init(false)?;
-            let home_owned = home.to_string();
-            let mut callbacks = git2::RemoteCallbacks::new();
-            callbacks.credentials(move |_url, username_from_url, _allowed_types| {
-                git2::Cred::ssh_key(
-                    username_from_url.unwrap_or("git"),
-                    None,
-                    std::path::Path::new(&format!("{}/.ssh/id_rsa", home_owned)),
-                    None,
-                )
-            });
 
             let mut fetch_opts = git2::FetchOptions::new();
-            fetch_opts.remote_callbacks(callbacks);
+            fetch_opts.remote_callbacks(Self::remote_callbacks());
             let mut submodule_update_opts = git2::SubmoduleUpdateOptions::new();
             submodule_update_opts.fetch(fetch_opts);
 
             submodule.update(true, Some(&mut submodule_update_opts))?;
 
             if let Ok(sub_repo) = submodule.open() {
-                self.init_submodules(&sub_repo, home)?;
+                self.init_submodules(&sub_repo)?;
             }
         }
         Ok(())
@@ -159,29 +204,16 @@ impl<S: AsRef<str>> GitLoader<S> {
         }
 
         log::debug!("Cloning to '{}'", clone_path.display());
-        let home = std::env::var("HOME").map_err(|e| {
-            Error::Other(anyhow::anyhow!("Failed to get HOME directory: {}", e))
-        })?;
-
-        let mut callbacks = git2::RemoteCallbacks::new();
-        callbacks.credentials(|_url, username_from_url, _allowed_types| {
-            git2::Cred::ssh_key(
-                username_from_url.unwrap_or("git"),
-                None,
-                Path::new(&format!("{home}/.ssh/id_rsa")),
-                None,
-            )
-        });
 
         let mut fetch_opts = git2::FetchOptions::new();
-        fetch_opts.remote_callbacks(callbacks);
+        fetch_opts.remote_callbacks(Self::remote_callbacks());
 
         let mut builder = git2::build::RepoBuilder::new();
         builder.fetch_options(fetch_opts);
 
         match builder.clone(repo_url, &clone_path) {
             Ok(repo) => {
-                self.init_submodules(&repo, &home)?;
+                self.init_submodules(&repo)?;
                 let source = extract_source_info_from_repo(repo_url, &repo);
                 Ok(LoadedTemplate { root: clone_path, source })
             }
