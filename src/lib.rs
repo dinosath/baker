@@ -26,8 +26,14 @@ pub mod cli;
 /// Application-wide constants.
 pub mod constants;
 
+/// Conflict marker utilities.
+pub mod conflict;
+
 /// Defines custom error types.
 pub mod error;
+
+/// Generated metadata file support.
+pub mod generated;
 
 /// Processes .bakerignore files to exclude specific paths.
 pub mod ignore;

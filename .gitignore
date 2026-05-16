@@ -24,3 +24,4 @@ out
 
 # MacOS
 .DS_Store
+cobertura.xml

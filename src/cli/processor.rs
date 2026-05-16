@@ -1,5 +1,6 @@
 use crate::{
     cli::{context::GenerationContext, SkipConfirm},
+    conflict::apply_conflict_markers,
     error::{Error, Result},
     prompt::confirm,
     template::{
@@ -32,7 +33,6 @@ impl<'a> FileProcessor<'a> {
             let entry = match dir_entry {
                 Ok(e) => e,
                 Err(e) => {
-                    // Handle symlink loop errors gracefully - just skip and continue
                     if e.loop_ancestor().is_some() {
                         log::warn!(
                             "Skipping symlink loop detected at '{}' (points back to ancestor '{}')",
@@ -84,7 +84,8 @@ impl<'a> FileProcessor<'a> {
             .unwrap_or_else(|| path.display().to_string().replace('\\', "/"))
     }
 
-    /// Handles a single file operation (write, copy, create directory, or ignore)
+    /// Handles a single file operation (write, copy, create directory, or ignore).
+    /// Symlink loop errors are skipped gracefully.
     fn handle_file_operation(&self, file_operation: &TemplateOperation) -> Result<bool> {
         log::debug!("Handling file operation: {file_operation:?}");
         match file_operation {
@@ -104,12 +105,39 @@ impl<'a> FileProcessor<'a> {
         }
     }
 
+    /// Writes content to a target file.
+    ///
+    /// In conflict mode, merges with markers if the file exists and content differs.
+    /// Skips files that already contain unresolved conflict markers.
+    /// Identical content is treated as a no-op.
     fn handle_write(
         &self,
         target: &Path,
         target_exists: bool,
         content: &str,
     ) -> Result<bool> {
+        if self.context.conflict_mode() && target_exists {
+            if let Ok(raw) = std::fs::read_to_string(target) {
+                let existing = normalize_line_endings(&raw);
+                if has_unresolved_conflict_markers(&existing) {
+                    log::warn!(
+                        "Skipping '{}': file already contains unresolved conflict markers.",
+                        target.display()
+                    );
+                    return Ok(false);
+                }
+                if existing != content {
+                    let style = self.context.conflict_style();
+                    let merged = apply_conflict_markers(&existing, content, style);
+                    self.write_file(&merged, target)?;
+                    log::info!("Conflict markers written to '{}'", target.display());
+                    return Ok(true);
+                }
+                log::debug!("Skipping unchanged file '{}'", target.display());
+                return Ok(false);
+            }
+        }
+
         let user_confirmed = self.confirm_overwrite(target, target_exists)?;
         if user_confirmed {
             self.write_file(content, target)?;
@@ -117,12 +145,24 @@ impl<'a> FileProcessor<'a> {
         Ok(user_confirmed)
     }
 
+    /// Copies a file from source to target.
+    ///
+    /// In conflict mode, binary files are overwritten directly (cannot insert text markers).
     fn handle_copy(
         &self,
         source: &Path,
         target: &Path,
         target_exists: bool,
     ) -> Result<bool> {
+        if self.context.conflict_mode() && target_exists {
+            log::warn!(
+                "Overwriting binary file '{}' during update (cannot add conflict markers).",
+                target.display()
+            );
+            self.copy_file(source, target)?;
+            return Ok(true);
+        }
+
         let user_confirmed = self.confirm_overwrite(target, target_exists)?;
         if user_confirmed {
             self.copy_file(source, target)?;
@@ -139,6 +179,34 @@ impl<'a> FileProcessor<'a> {
 
     fn handle_multiple_write(&self, writes: &[WriteOp]) -> Result<bool> {
         for write in writes {
+            if self.context.conflict_mode() && write.target_exists {
+                if let Ok(raw) = std::fs::read_to_string(&write.target) {
+                    let existing = normalize_line_endings(&raw);
+                    if has_unresolved_conflict_markers(&existing) {
+                        log::warn!(
+                            "Skipping '{}': file already contains unresolved conflict markers.",
+                            write.target.display()
+                        );
+                        continue;
+                    }
+                    if existing != write.content {
+                        let style = self.context.conflict_style();
+                        let merged =
+                            apply_conflict_markers(&existing, &write.content, style);
+                        self.write_file(&merged, &write.target)?;
+                        log::info!(
+                            "Conflict markers written to '{}'",
+                            write.target.display()
+                        );
+                    } else {
+                        log::debug!(
+                            "Skipping unchanged file '{}'",
+                            write.target.display()
+                        );
+                    }
+                    continue;
+                }
+            }
             let user_confirmed =
                 self.confirm_overwrite(&write.target, write.target_exists)?;
             if user_confirmed {
@@ -162,7 +230,6 @@ impl<'a> FileProcessor<'a> {
             return Ok(());
         }
 
-        // Ensure parent directory exists
         if let Some(parent) = dest_path.parent() {
             self.create_dir_all(parent)?;
         }
@@ -180,9 +247,10 @@ impl<'a> FileProcessor<'a> {
     }
 
     /// When follow_symlinks is enabled, copy the content the symlink points to.
+    /// Resolves relative targets against the symlink's parent directory.
+    /// Falls back to recreating the symlink for directories.
     fn copy_followed_symlink(&self, source_link: &Path, dest_path: &Path) -> Result<()> {
         let target_rel = std::fs::read_link(source_link)?;
-        // Resolve relative targets against the symlink's parent directory.
         let resolved_target = if target_rel.is_relative() {
             source_link.parent().unwrap_or_else(|| Path::new("")).join(&target_rel)
         } else {
@@ -193,7 +261,6 @@ impl<'a> FileProcessor<'a> {
             std::fs::copy(&resolved_target, dest_path)?;
             return Ok(());
         }
-        // For now, if it's a directory (or other), fall back to recreating symlink.
         self.copy_symlink(source_link, dest_path)
     }
 
@@ -224,6 +291,7 @@ impl<'a> FileProcessor<'a> {
     }
 
     /// Write content to a file, creating parent directories if needed.
+    /// Line endings are converted to the platform default before writing.
     fn write_file<P: AsRef<Path>>(&self, content: &str, dest_path: P) -> Result<()> {
         let dest_path = dest_path.as_ref();
 
@@ -231,12 +299,12 @@ impl<'a> FileProcessor<'a> {
             return Ok(());
         }
 
-        // Ensure parent directory exists
         if let Some(parent) = dest_path.parent() {
             self.create_dir_all(parent)?;
         }
 
-        std::fs::write(dest_path, content).map_err(Error::from)
+        let native = to_native_line_endings(content);
+        std::fs::write(dest_path, native).map_err(Error::from)
     }
 
     /// Create directory and all parent directories if they don't exist.
@@ -254,6 +322,32 @@ impl<'a> FileProcessor<'a> {
             || self.context.skip_confirms().contains(&SkipConfirm::Overwrite)
             || !target_exists
     }
+}
+
+/// Returns `true` if `content` contains a baker conflict marker that has not
+/// yet been resolved (i.e. `<<<<<<< current` is still present).
+fn has_unresolved_conflict_markers(content: &str) -> bool {
+    content.contains("<<<<<<< current")
+}
+
+/// Convert all line endings to `\n` so that content rendered internally
+/// (which always uses `\n`) can be compared with content read from disk
+/// (which may use `\r\n` on Windows).
+fn normalize_line_endings(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
+
+/// Convert `\n` line endings to the platform-native separator.
+/// On Windows this produces `\r\n`; everywhere else it is a no-op.
+#[cfg(windows)]
+fn to_native_line_endings(s: &str) -> String {
+    // First normalise to \n, then expand to \r\n.
+    s.replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
+#[cfg(not(windows))]
+fn to_native_line_endings(s: &str) -> String {
+    s.to_string()
 }
 
 #[cfg(test)]
@@ -290,9 +384,13 @@ mod tests {
                 pre_hook_runner: Vec::new(),
                 post_hook_print_stdout: false,
                 follow_symlinks,
+                generated_file_name: None,
+                conflict_marker_style: None,
             },
             skip_confirms,
             false,
+            false,
+            None,
         );
         context.set_answers(json!({}));
         let context = Box::leak(Box::new(context));
@@ -383,6 +481,78 @@ mod tests {
         let unrelated_path = PathBuf::from("/some/other/path/file.txt");
         let result = processor.get_template_name(&unrelated_path);
         assert_eq!(result, "/some/other/path/file.txt");
+    }
+
+    fn build_file_processor_conflict_mode() -> (TempDir, TempDir, FileProcessor<'static>)
+    {
+        let template_root = TempDir::new().unwrap();
+        let output_root = TempDir::new().unwrap();
+        let engine = Box::leak(Box::new(MiniJinjaRenderer::new()));
+        let bakerignore = Box::leak(Box::new(GlobSetBuilder::new().build().unwrap()));
+
+        let mut context = GenerationContext::new(
+            template_root.path().to_path_buf(),
+            output_root.path().to_path_buf(),
+            crate::config::ConfigV1 {
+                template_suffix: ".baker.j2".into(),
+                loop_separator: "".into(),
+                loop_content_separator: "".into(),
+                template_globs: Vec::new(),
+                import_root: None,
+                questions: IndexMap::new(),
+                post_hook_filename: "post".into(),
+                pre_hook_filename: "pre".into(),
+                post_hook_runner: Vec::new(),
+                pre_hook_runner: Vec::new(),
+                post_hook_print_stdout: false,
+                follow_symlinks: false,
+                generated_file_name: None,
+                conflict_marker_style: None,
+            },
+            vec![SkipConfirm::All],
+            false,
+            true, // conflict_mode
+            None,
+        );
+        context.set_answers(json!({}));
+        let context = Box::leak(Box::new(context));
+        let processor = TemplateProcessor::new(&*engine, context, &*bakerignore);
+
+        (template_root, output_root, FileProcessor::new(processor, context))
+    }
+
+    #[test]
+    fn handle_write_skips_file_with_existing_conflict_markers() {
+        let (_template_root, output_root, processor) =
+            build_file_processor_conflict_mode();
+        let target = output_root.path().join("main.rs");
+
+        let existing_with_markers = "\
+use foo;
+<<<<<<< current
+fn old() {}
+=======
+fn new() {}
+>>>>>>> updated
+";
+        std::fs::write(&target, existing_with_markers).unwrap();
+
+        let result = processor.handle_write(&target, true, "fn new() {}\n").unwrap();
+
+        assert!(!result, "should return false (skipped)");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            existing_with_markers,
+            "file content must be unchanged"
+        );
+    }
+
+    #[test]
+    fn has_unresolved_conflict_markers_detects_markers() {
+        assert!(has_unresolved_conflict_markers(
+            "<<<<<<< current\nold\n=======\nnew\n>>>>>>> updated\n"
+        ));
+        assert!(!has_unresolved_conflict_markers("no markers here\n"));
     }
 
     #[test]

@@ -1,10 +1,11 @@
 use crate::{
     cli::{
         answers::AnswerCollector, context::GenerationContext, hooks::run_hook,
-        processor::FileProcessor, Args, SkipConfirm,
+        processor::FileProcessor, GenerateArgs, SkipConfirm,
     },
     config::{Config, ConfigV1},
     error::{Error, Result},
+    generated,
     ignore::parse_bakerignore_file,
     loader::get_template,
     prompt::confirm,
@@ -22,18 +23,18 @@ use walkdir::WalkDir;
 
 /// Main CLI runner that orchestrates the entire template generation workflow
 pub struct Runner {
-    args: Args,
+    args: GenerateArgs,
 }
 
 impl Runner {
-    pub fn new(args: Args) -> Self {
+    pub fn new(args: GenerateArgs) -> Self {
         Self { args }
     }
 
     /// Executes the complete template generation workflow
     pub fn run(self) -> Result<()> {
         let mut engine = get_template_engine();
-        let mut context = self.prepare_environment(&mut engine)?;
+        let (mut context, source_info) = self.prepare_environment(&mut engine)?;
 
         let hook_plan = self.prepare_hooks(&context, &engine)?;
 
@@ -51,7 +52,7 @@ impl Runner {
 
         self.maybe_run_post_hook(&hook_plan, &context, &engine)?;
 
-        self.finish(&context);
+        self.finish(&context, source_info)?;
 
         Ok(())
     }
@@ -59,27 +60,32 @@ impl Runner {
     fn prepare_environment(
         &self,
         engine: &mut dyn TemplateRenderer,
-    ) -> Result<GenerationContext> {
+    ) -> Result<(GenerationContext, crate::loader::TemplateSourceInfo)> {
         let output_root = self.prepare_output_dir()?;
-        let template_root = self.resolve_template()?;
+        let loaded = self.resolve_template()?;
+        let template_root = loaded.root;
+        let source_info = loaded.source;
         let config = self.load_and_validate_config(&template_root)?;
         debug!("Loaded config: follow_symlinks={}", config.follow_symlinks);
         self.add_templates_in_renderer(&template_root, &config, engine);
 
-        Ok(GenerationContext::new(
+        let ctx = GenerationContext::new(
             template_root,
             output_root,
             config,
             self.args.skip_confirms.clone(),
             self.args.dry_run,
-        ))
+            false,
+            None,
+        );
+        Ok((ctx, source_info))
     }
 
     fn prepare_output_dir(&self) -> Result<PathBuf> {
         self.get_output_dir(&self.args.output_dir, self.args.force, self.args.dry_run)
     }
 
-    fn resolve_template(&self) -> Result<PathBuf> {
+    fn resolve_template(&self) -> Result<crate::loader::LoadedTemplate> {
         get_template(self.args.template.as_str(), self.should_skip_overwrite_prompts())
     }
 
@@ -196,8 +202,6 @@ impl Runner {
             self.args.answers_file.clone(),
         )
     }
-
-    /// Processes all template files
     fn process_templates(
         &self,
         context: &GenerationContext,
@@ -249,8 +253,30 @@ impl Runner {
         Ok(())
     }
 
-    fn finish(&self, context: &GenerationContext) {
+    fn finish(
+        &self,
+        context: &GenerationContext,
+        source_info: crate::loader::TemplateSourceInfo,
+    ) -> Result<()> {
+        let file_name = generated::resolve_file_name(
+            self.args.generated_file.as_deref(),
+            context.config().generated_file_name.as_deref(),
+        );
+
+        if context.dry_run() {
+            log_dry_run_action(
+                &format!("Would write generated metadata to '{file_name}'"),
+                context.output_root(),
+            );
+        } else {
+            let answers =
+                generated::strip_secret_answers(context.answers(), context.config());
+            let data = generated::BakerGenerated::new(source_info, answers);
+            generated::write(context.output_root(), file_name, &data)?;
+        }
+
         println!("{}", completion_message(context.dry_run(), context.output_root()));
+        Ok(())
     }
 
     /// Determines if overwrite prompts should be skipped
@@ -306,7 +332,6 @@ impl Runner {
         config: &ConfigV1,
         engine: &mut dyn TemplateRenderer,
     ) {
-        // Determine the import root directory
         let import_root = if let Some(ref import_root_str) = config.import_root {
             let import_path = Path::new(import_root_str);
             if import_path.is_absolute() {
@@ -477,23 +502,45 @@ fn log_dry_run_action<A: AsRef<Path>>(action: &str, target: A) {
     log::info!("[DRY RUN] {}: {}", action, target.as_ref().display());
 }
 
+/// Produces the user-facing completion string for the current run, accounting for dry-run mode.
+fn completion_message(dry_run: bool, output_root: &Path) -> String {
+    if dry_run {
+        format!(
+            "[DRY RUN] Template processing completed. No files were actually created in {}.",
+            output_root.display()
+        )
+    } else {
+        format!(
+            "Template generation completed successfully in {}.",
+            output_root.display()
+        )
+    }
+}
+
+/// Main entry point for `baker generate`
+pub fn run(args: GenerateArgs) -> Result<()> {
+    let runner = Runner::new(args);
+    runner.run()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use tempfile::TempDir;
 
-    fn base_args() -> Args {
-        Args {
+    fn base_args() -> GenerateArgs {
+        GenerateArgs {
             template: "template".into(),
             output_dir: PathBuf::from("output"),
             force: false,
-            verbose: 0,
             answers: None,
             answers_file: None,
             skip_confirms: Vec::new(),
             non_interactive: false,
             dry_run: false,
+            generated_file: None,
+            conflict_style: None,
         }
     }
 
@@ -588,25 +635,4 @@ mod tests {
 
         assert_eq!(result, vec!["python3".to_string(), "-u".to_string()]);
     }
-}
-
-/// Produces the user-facing completion string for the current run, accounting for dry-run mode.
-fn completion_message(dry_run: bool, output_root: &Path) -> String {
-    if dry_run {
-        format!(
-            "[DRY RUN] Template processing completed. No files were actually created in {}.",
-            output_root.display()
-        )
-    } else {
-        format!(
-            "Template generation completed successfully in {}.",
-            output_root.display()
-        )
-    }
-}
-
-/// Main entry point for CLI execution
-pub fn run(args: Args) -> Result<()> {
-    let runner = Runner::new(args);
-    runner.run()
 }

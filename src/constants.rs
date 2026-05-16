@@ -21,6 +21,9 @@ pub const DEFAULT_POST_HOOK: &str = "post";
 /// Ignore file name
 pub const IGNORE_FILE: &str = ".bakerignore";
 
+/// Default name of the generated-metadata file written to the output directory
+pub const DEFAULT_GENERATED_FILE_NAME: &str = ".baker-generated.yaml";
+
 /// STDIN indicator for CLI arguments
 pub const STDIN_INDICATOR: &str = "-";
 

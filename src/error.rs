@@ -7,7 +7,6 @@ use crate::constants::exit_codes;
 /// Represents all possible errors that can occur in Baker
 #[derive(Error, Debug)]
 pub enum Error {
-    // Configuration errors
     #[error("Config validation failed: {0}")]
     ConfigValidation(String),
 
@@ -16,11 +15,9 @@ pub enum Error {
     )]
     ConfigNotFound { template_dir: String, config_files: String },
 
-    // User interaction errors
     #[error("Dialoguer error: {0}")]
     DialoguerError(#[from] DialoguerError),
 
-    // Parsing errors
     #[error("Failed to parse JSON: {0}")]
     JSONParseError(#[from] serde_json::Error),
 
@@ -30,25 +27,21 @@ pub enum Error {
     #[error("Failed to parse glob pattern in .bakerignore file: {0}")]
     GlobSetParseError(#[from] globset::Error),
 
-    // System errors
     #[error("IO operation failed: {0}")]
     IoError(#[from] std::io::Error),
 
     #[error("File system traversal failed: {0}")]
     WalkdirError(#[from] walkdir::Error),
 
-    // External tool errors
     #[error("Git operation failed: {0}")]
     Git2Error(#[from] git2::Error),
 
     #[error("Template rendering failed: {0}")]
     MinijinjaError(#[from] minijinja::Error),
 
-    // Process execution errors
     #[error("Hook script '{script}' failed with exit code: {status}")]
     HookExecutionError { script: String, status: ExitStatus },
 
-    // Business logic errors
     #[error(
         "Output directory '{output_dir}' already exists. Use --force to overwrite it."
     )]
@@ -60,7 +53,17 @@ pub enum Error {
     #[error("Cannot process path '{source_path}': {e}")]
     ProcessError { source_path: String, e: String },
 
-    // Generic errors
+    #[error(
+        "Generated metadata file not found at '{path}'. Run 'baker generate' first."
+    )]
+    GeneratedFileNotFound { path: std::path::PathBuf },
+
+    #[error("Unsupported generated metadata version '{found}'. Expected '1'.")]
+    UnsupportedGeneratedVersion { found: String },
+
+    #[error("Answers JSON is not an object")]
+    AnswersNotObject,
+
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }
@@ -72,4 +75,27 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 pub fn default_error_handler(err: Error) {
     log::error!("{err}");
     std::process::exit(exit_codes::FAILURE);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let err = Error::ConfigValidation("Missing field".to_string());
+        assert_eq!(err.to_string(), "Config validation failed: Missing field");
+
+        let err = Error::ConfigNotFound {
+            template_dir: "my_template".to_string(),
+            config_files: "baker.yaml, baker.json".to_string(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "Configuration file not found in 'my_template'. Expected one of: baker.yaml, baker.json"
+        );
+
+        let err = Error::AnswersNotObject;
+        assert_eq!(err.to_string(), "Answers JSON is not an object");
+    }
 }

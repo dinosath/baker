@@ -1,6 +1,7 @@
 //! Configuration loading and management
 
 use crate::config::question::Question;
+use crate::conflict::ConflictStyle;
 use crate::constants::{
     CONFIG_FILENAMES, DEFAULT_LOOP_CONTENT_SEPARATOR, DEFAULT_LOOP_SEPARATOR,
     DEFAULT_POST_HOOK, DEFAULT_PRE_HOOK, DEFAULT_TEMPLATE_SUFFIX,
@@ -38,6 +39,14 @@ pub struct ConfigV1 {
     pub post_hook_print_stdout: bool,
     #[serde(default = "get_default_follow_symlinks")]
     pub follow_symlinks: bool,
+    /// Name of the generated-metadata file written to the output directory.
+    /// Defaults to `.baker-generated.yaml`.
+    #[serde(default)]
+    pub generated_file_name: Option<String>,
+    /// Conflict-marker style used during `baker update`.
+    /// Defaults to `git` style.
+    #[serde(default)]
+    pub conflict_marker_style: Option<ConflictStyle>,
 }
 
 impl ConfigV1 {

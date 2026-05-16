@@ -21,6 +21,10 @@
   - [Non-Interactive Mode](#non-interactive-mode)
   - [Conditional Questions](#conditional-questions)
   - [Debugging Templates](#debugging-templates)
+- [Updating a Generated Project](#updating-a-generated-project)
+  - [How update works](#how-update-works)
+  - [Conflict Markers](#conflict-markers)
+  - [Keeping answers up to date](#keeping-answers-up-to-date)
 - [Hooks](#hooks)
   - [Customizing Hook Filenames](#customizing-hook-filenames)
   - [Customizing Hook Runners](#customizing-hook-runners)
@@ -114,7 +118,7 @@ If a symlink points to a file it will be duplicated as a regular file. Symlinks 
 As a quick start, you can run the following command to generate a project:
 
 ```
-baker examples/demo my-project
+baker generate examples/demo my-project
 ```
 
 Each component of this template is described in detail below.
@@ -376,7 +380,7 @@ Default answers can be provided using the `--answers` option.
 
 ```bash
 # Alternatively, use --answers='{"name": "John"}'
-echo '{"name": "John"}' | baker template my-project --answers=-
+echo '{"name": "John"}' | baker generate template my-project --answers=-
 ```
 
 ```yaml
@@ -398,7 +402,7 @@ What is your name? [John]:
 For fully automated workflows like CI/CD pipelines, you can combine `--answers` with the `--non-interactive` flag to completely skip all prompts:
 
 ```bash
-baker template my-project --answers='{"project_name": "Example Project"}' --non-interactive
+baker generate template my-project --answers='{"project_name": "Example Project"}' --non-interactive
 ```
 
 In `--non-interactive` mode, Baker determines whether to skip user prompts based on two factors:
@@ -433,7 +437,7 @@ questions:
 And you run:
 
 ```bash
-baker template my-project --answers='{"project_name": "Example"}' --non-interactive
+baker generate template my-project --answers='{"project_name": "Example"}' --non-interactive
 ```
 
 Baker will automatically use "Example" for `project_name`, "Anonymous" for `project_author` (from the default value), and `true` for `use_tests` (from the default value).
@@ -479,7 +483,7 @@ questions:
 When you run the template, the `debug()` function will output the current context:
 
 ```
-baker example out
+baker generate example out
 What is your name?: aaa
 Hello, aaa. What is your last name?: bbb
 State {
@@ -511,6 +515,77 @@ State {
 ```
 
 This output provides a detailed view of the current context, including defined variables, their values, and available functions, helping you troubleshoot and debug your templates effectively.
+
+## Updating a Generated Project
+
+When a template evolves after you have already generated a project from it, you can bring the
+generated project up-to-date with `baker update` instead of regenerating from scratch.
+
+After every `baker generate` run, Baker writes a `.baker-generated.yaml` file into the output
+directory. This file stores:
+
+- The template source (local path + SHA-256 content hash, or Git URL + commit SHA + optional tag)
+- All answers collected during generation
+- The generation timestamp
+
+### How update works
+
+1. Run `baker generate` as usual — this creates the project and the `.baker-generated.yaml` file.
+2. Later, when the template has changed, `cd` into the generated project directory and run:
+
+   ```bash
+   baker update
+   ```
+
+3. Baker reads `.baker-generated.yaml`, re-fetches the template, and compares its hash (local) or
+   HEAD commit (git) with the stored value.
+4. If nothing has changed it exits immediately — nothing to do.
+5. If the template has changed, Baker re-renders every template file using the saved answers.
+
+### Conflict Markers
+
+Baker cannot know whether you have edited a generated file after generation. To be safe, whenever
+the newly-rendered content of a file differs from what is on disk, Baker writes **git-style
+conflict markers** into the file instead of silently overwriting it:
+
+```
+<<<<<<< current
+Content that was on disk (possibly with your local edits)
+=======
+Newly rendered content from the updated template
+>>>>>>> updated
+```
+
+Resolve each conflict as you would after a `git merge`, then remove the marker lines. If a file's
+on-disk content is already identical to the newly-rendered content, Baker skips it silently.
+
+Binary files (non-text) that need updating are written alongside the original as
+`<filename>.baker-updated` instead of overwriting or adding text markers.
+
+### Keeping answers up to date
+
+By default, `baker update` **reuses all answers** from `.baker-generated.yaml`. If the template
+has added new questions since the last generation, Baker will prompt you for them interactively
+(or use their defaults when `--non-interactive` is set).
+
+You can override individual answers at update time:
+
+```bash
+# Override a single answer
+baker update --answers='{"project_name": "NewName"}'
+
+# Load overrides from a file
+baker update --answers-file=overrides.json
+```
+
+The `--generated-file` flag (or `generated_file_name` in `baker.yaml`) lets you customise the
+name of the metadata file if you prefer something other than `.baker-generated.yaml`.
+
+```bash
+baker generate my-template my-project --generated-file=.baker-meta.yaml
+cd my-project
+baker update --generated-file=.baker-meta.yaml
+```
 
 ## Hooks
 
@@ -1233,7 +1308,8 @@ Baker provides a set of built-in filters and functions to enhance the flexibilit
 | 🟢 **Platform-specific hooks**                    | ✅ Use `{{platform.family}}/pre` etc. for OS-aware logic                              | ❌             | ⚠️ Limited via Rhai    | ❌                                         | ❌                         | ⚠️ Custom logic required     |
 | 🟢 **CI/CD-friendly answers piping**              | ✅ `--answers=-` or echo JSON into CLI                                                | ❌             | ⚠️ Partial             | ✅ Via pre-filled YAML                     | ⚠️ `--no-input` only      | ❌ Manual scripting           |
 | 🟢 **Lightweight & Fast**                         | ✅ Rust binary, no runtime dependencies                                               | ✅ Rust binary | ✅ Rust binary          | ❌ Requires Python                         | ❌ Requires Python         | ❌ Requires Node.js           |
-| 🟢 **Simple CLI Interface**                       | ✅ `baker <template> <output>` + `--answers`, `--skip-confirms`                       | ✅ Simple      | ❌ Requires Cargo usage | ❌ More verbose                            | ✅ Simple                  | ❌ Requires generator install |
+| 🟢 **Simple CLI Interface**                       | ✅ `baker generate <template> <output>` + `baker update` for template upgrades        | ✅ Simple      | ❌ Requires Cargo usage | ❌ More verbose                            | ✅ Simple                  | ❌ Requires generator install |
+| 🟢 **Template update / re-generation**            | ✅ `baker update` with conflict markers and answer reuse                              | ❌             | ❌                      | ✅ Full `copier update`                    | ❌                         | ❌                            |
 | 🟢 **Language-agnostic hooks**                    | ✅ Hooks can be in _any_ language (Bash, Python, etc.)                                | ✅ Yes         | ⚠️ Only Rhai scripting | ✅ Yes                                     | ✅ Yes                     | ❌ Only JS                    |
 | 🟢 **Templated file/dir names**                   | ✅ Full MiniJinja templating in names & conditions                                    | ✅ Yes         | ✅ Yes                  | ✅ Yes                                     | ✅ Yes                     | ✅ Via JS logic               |
 | 🟢 **Templated prompts & defaults**               | ✅ Dynamic defaults using MiniJinja, conditional via `ask_if`                         | ✅ Yes         | ⚠️ Limited             | ✅ Full Jinja                              | ❌ Static only             | ✅ Full control in JS         |
