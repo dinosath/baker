@@ -3,6 +3,9 @@
 <div align="center">
   <img src="assets/logo.ai.png" alt="" width=100>
   <p><strong>Baker</strong> is a command-line tool that helps you quickly <a href="https://en.wikipedia.org/wiki/Scaffold_(programming)">scaffold</a> new projects. It supports language-independent <a href="#using-hooks">hooks</a> for automating routine tasks. Baker is written in Rust and distributed as a standalone binary. Precompiled binaries are available for popular platforms on the <a href="https://github.com/aliev/baker/releases">releases page</a>.</p>
+  <p>
+    <a href="https://codspeed.io/dinosath/baker"><img src="https://img.shields.io/endpoint?url=https://codspeed.io/badge.json" alt="CodSpeed" /></a>
+  </p>
 </div>
 
 ## Table of Contents
