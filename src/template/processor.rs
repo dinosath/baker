@@ -437,6 +437,8 @@ mod tests {
                 follow_symlinks: false,
                 generated_file_name: None,
                 conflict_marker_style: None,
+                pre_render_hook_filename: "pre_render".into(),
+                pre_render_hook_runner: Vec::new(),
             },
             Vec::new(),
             false,

@@ -26,8 +26,10 @@
   - [Conflict Markers](#conflict-markers)
   - [Keeping answers up to date](#keeping-answers-up-to-date)
 - [Hooks](#hooks)
+  - [Pre-render Hook](#pre-render-hook)
   - [Customizing Hook Filenames](#customizing-hook-filenames)
   - [Customizing Hook Runners](#customizing-hook-runners)
+  - [Displaying Post-hook Stdout](#displaying-post-hook-stdout)
   - [Available Platform Variables](#available-platform-variables)
 - [Questions](#questions)
   - [Single-Input](#single-input)
@@ -589,13 +591,13 @@ baker update --generated-file=.baker-meta.yaml
 
 ## Hooks
 
-Hooks are useful for performing routine tasks before (pre-hook) or after (post-hook) project generation.
+Hooks are useful for performing routine tasks before answers are collected (`pre`), after answers are collected but before files are rendered (`pre_render`), or after project generation (`post`).
 
 Baker executes hooks as separate processes, which makes them language-independent.
 
 For a hook to be executed, it must meet two requirements:
 
-1. It must be located in the template directory `template_root/hooks/` and named according to the `pre_hook_filename` or `post_hook_filename` specified in the configuration.
+1. It must be located in the template directory `template_root/hooks/` and named according to the `pre_hook_filename`, `pre_render_hook_filename`, or `post_hook_filename` specified in the configuration.
 2. It must be an executable file (`chmod +x template_root/hooks/<hook_filename>`).
 
 When generating a project containing a hook, Baker will issue a warning:
@@ -641,6 +643,51 @@ if __name__ == "__main__":
     template_dir_path = path / context["template_dir"]
 ```
 
+### Pre-render Hook
+
+The `pre_render` hook runs after Baker has collected answers from defaults, CLI input, answer files, prompts, and the `pre` hook, but before template files are rendered. It receives the same JSON context on `stdin` as the `post` hook:
+
+```json
+{
+  "template_dir": "path/to/template",
+  "output_dir": "path/to/output",
+  "answers": {
+    "project_name": "demo"
+  }
+}
+```
+
+If the hook writes a JSON object to `stdout`, Baker merges that object into the answers before rendering. New keys are added and existing keys are overwritten. This is useful when a simple user answer needs to be expanded into structured data that templates can consume.
+
+For example, a template can ask for a short name and derive a richer value before rendering:
+
+```yaml
+schemaVersion: v1
+
+pre_render_hook_runner:
+  - python3
+
+questions:
+  project_name:
+    type: str
+    help: Project name
+    default: Demo App
+```
+
+`hooks/pre_render`:
+
+```python
+#!/usr/bin/env python3
+import json
+import sys
+
+context = json.load(sys.stdin)
+name = context["answers"]["project_name"]
+json.dump({"project_slug": name.lower().replace(" ", "-")}, sys.stdout)
+```
+
+Templates can then use `{{ project_slug }}` as a normal answer. Like `pre` hook output, `pre_render` output should be a JSON object; malformed JSON and non-object output are ignored with a warning.
+
 The diagram below illustrates this process in more detail
 
 ```mermaid
@@ -649,7 +696,11 @@ graph LR
     Pre[hooks/pre] --> stdout1[stdout]
     stdout1 --> |JSON answers| Baker[baker]
     any_cmd --> |JSON answers| stdin2[stdin] --> Baker
-    Baker --> |JSON output| stdin3[stdin]
+    Baker --> |JSON context| stdinPreRender[stdin]
+    stdinPreRender --> PreRender[hooks/pre_render]
+    PreRender --> |JSON answers| stdoutPreRender[stdout]
+    stdoutPreRender --> Baker
+    Baker --> |JSON context| stdin3[stdin]
     stdin3 --> Post[hooks/post]
     Post --> stdout3[stdout]
 
@@ -659,6 +710,7 @@ graph LR
     end
 
     subgraph Main Process
+        PreRender
         Baker
     end
 
@@ -670,13 +722,13 @@ graph LR
     classDef process fill:#2d3436,stroke:#fff,stroke-width:2px,color:#fff
     classDef stream fill:#3498db,stroke:#fff,stroke-width:2px,color:#fff
 
-    class Pre,Post,Baker process
-    class stdin2,stdin3,stdout1,stdout3 stream
+    class Pre,PreRender,Post,Baker process
+    class stdin2,stdinPreRender,stdin3,stdout1,stdoutPreRender,stdout3 stream
 ```
 
 ### Customizing Hook Filenames
 
-By default, Baker looks for hook scripts named `pre` and `post` in the `hooks` directory of your template. You can customize these filenames using the `pre_hook_filename` and `post_hook_filename` configuration options in your `baker.yaml` file:
+By default, Baker looks for hook scripts named `pre`, `pre_render`, and `post` in the `hooks` directory of your template. You can customize these filenames using the `pre_hook_filename`, `pre_render_hook_filename`, and `post_hook_filename` configuration options in your `baker.yaml` file:
 
 ```yaml
 schemaVersion: v1
@@ -686,13 +738,15 @@ questions:
 
 # Custom hook filenames
 pre_hook_filename: "setup-environment"
+pre_render_hook_filename: "prepare-answers"
 post_hook_filename: "finalize-project"
 ```
 
 With this configuration, Baker will:
 
 1. Look for a pre-hook script at `template_root/hooks/setup-environment`
-2. Look for a post-hook script at `template_root/hooks/finalize-project`
+2. Look for a pre-render hook script at `template_root/hooks/prepare-answers`
+3. Look for a post-hook script at `template_root/hooks/finalize-project`
 
 Hook filenames also support template strings, which can be used to create platform-specific hooks:
 
@@ -712,6 +766,7 @@ questions:
       - Not open source
 
 pre_hook_filename: "{{platform.family}}/pre"
+pre_render_hook_filename: "{{platform.family}}/pre_render"
 post_hook_filename: "{{platform.family}}/post"
 ```
 
@@ -721,9 +776,11 @@ This configuration allows you to organize hooks by platform. For example:
 hooks/
 ├── unix/
 │   ├── pre
+│   ├── pre_render
 │   └── post
 └── windows/
     ├── pre
+    ├── pre_render
     └── post
 ```
 
@@ -744,6 +801,11 @@ pre_hook_runner:
 
 post_hook_filename: post.py
 post_hook_runner:
+  - python3
+  - -u
+
+pre_render_hook_filename: pre_render.py
+pre_render_hook_runner:
   - python3
   - -u
 ```

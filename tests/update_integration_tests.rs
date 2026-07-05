@@ -240,6 +240,103 @@ fn update_local_template_cli_answers_override_saved() {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
+fn generate_pre_render_hook_merges_only_stdout_object_into_answers() {
+    let output_dir = generate_into_tmp("tests/templates/pre_render_hook_unix", None);
+
+    let meta = read_meta(output_dir.path());
+
+    assert_eq!(meta.answers.get("python_version").unwrap(), 4);
+    assert_eq!(meta.answers.get("derived_from").unwrap(), "3");
+    assert!(
+        meta.answers.get("template_dir").is_none(),
+        "hook execution metadata must not be merged into answers: {:?}",
+        meta.answers
+    );
+    assert!(
+        meta.answers.get("output_dir").is_none(),
+        "hook execution metadata must not be merged into answers: {:?}",
+        meta.answers
+    );
+    assert!(
+        meta.answers.get("answers").is_none(),
+        "hook stdin wrapper must not be merged into answers: {:?}",
+        meta.answers
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn generate_pre_render_hook_ignores_malformed_stdout() {
+    let template_dir = TempDir::new().unwrap();
+    create_pre_render_stdout_template(template_dir.path(), r#"print("{not valid json")"#);
+
+    let output_dir = generate_into_tmp(
+        template_dir.path().to_str().unwrap(),
+        Some(r#"{"name":"Alice"}"#),
+    );
+
+    let readme = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
+    assert_eq!(readme, "Name: Alice\nDerived: ");
+
+    let meta = read_meta(output_dir.path());
+    assert_eq!(meta.answers.get("name").unwrap(), "Alice");
+    assert!(
+        meta.answers.get("derived_name").is_none(),
+        "malformed pre_render stdout must not add answers: {:?}",
+        meta.answers
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn generate_pre_render_hook_ignores_non_object_stdout() {
+    let template_dir = TempDir::new().unwrap();
+    create_pre_render_stdout_template(
+        template_dir.path(),
+        r#"json.dump(["not", "an", "object"], sys.stdout)"#,
+    );
+
+    let output_dir = generate_into_tmp(
+        template_dir.path().to_str().unwrap(),
+        Some(r#"{"name":"Alice"}"#),
+    );
+
+    let readme = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
+    assert_eq!(readme, "Name: Alice\nDerived: ");
+
+    let meta = read_meta(output_dir.path());
+    assert_eq!(meta.answers.get("name").unwrap(), "Alice");
+    assert!(
+        meta.answers.get("derived_name").is_none(),
+        "non-object pre_render stdout must not add answers: {:?}",
+        meta.answers
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn update_local_template_reruns_pre_render_hook_before_rendering() {
+    let template_dir = TempDir::new().unwrap();
+    create_simple_template(template_dir.path(), "Hello, {{name}}!");
+    let output_dir = generate_into_tmp(
+        template_dir.path().to_str().unwrap(),
+        Some(r#"{"name":"Alice"}"#),
+    );
+
+    install_pre_render_hook(template_dir.path());
+    write_template_file(template_dir.path(), "Updated derived: {{derived_name}}!");
+
+    run_update_in(output_dir.path(), Some(r#"{"name":"Carol"}"#));
+
+    let readme = fs::read_to_string(output_dir.path().join("README.md")).unwrap();
+    assert!(
+        readme.contains("Updated derived: Carol-derived!"),
+        "pre_render hook output must be available during update rendering; got:\n{readme}"
+    );
+}
+
+#[test]
 fn update_local_template_dry_run_no_changes() {
     let template_dir = TempDir::new().unwrap();
     create_simple_template(template_dir.path(), "Hello, {{name}}!");
@@ -555,6 +652,51 @@ fn create_simple_template(dir: &Path, content: &str) {
 /// Overwrite the template file content without changing the baker.yaml.
 fn write_template_file(dir: &Path, content: &str) {
     fs::write(dir.join("README.md.baker.j2"), content).unwrap();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn install_pre_render_hook(dir: &Path) {
+    fs::write(
+        dir.join("baker.yaml"),
+        "schemaVersion: v1\npre_render_hook_runner:\n  - python3\nquestions:\n  name:\n    type: str\n    help: What is your name?\n    default: World\n",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("hooks")).unwrap();
+    fs::write(
+        dir.join("hooks/pre_render"),
+        r#"#!/usr/bin/env python3
+import json
+import sys
+
+payload = json.load(sys.stdin)
+name = payload["answers"]["name"]
+json.dump({"derived_name": f"{name}-derived"}, sys.stdout)
+"#,
+    )
+    .unwrap();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_pre_render_stdout_template(dir: &Path, hook_body: &str) {
+    fs::write(
+        dir.join("baker.yaml"),
+        "schemaVersion: v1\npre_render_hook_runner:\n  - python3\nquestions:\n  name:\n    type: str\n    help: What is your name?\n    default: World\n",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("hooks")).unwrap();
+    fs::write(
+        dir.join("hooks/pre_render"),
+        format!(
+            r#"#!/usr/bin/env python3
+import json
+import sys
+
+{hook_body}
+"#,
+        ),
+    )
+    .unwrap();
+    write_template_file(dir, "Name: {{name}}\nDerived: {{derived_name}}");
 }
 
 /// Compare the output directory against an expected directory, ignoring

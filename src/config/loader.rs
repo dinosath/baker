@@ -4,7 +4,8 @@ use crate::config::question::Question;
 use crate::conflict::ConflictStyle;
 use crate::constants::{
     CONFIG_FILENAMES, DEFAULT_LOOP_CONTENT_SEPARATOR, DEFAULT_LOOP_SEPARATOR,
-    DEFAULT_POST_HOOK, DEFAULT_PRE_HOOK, DEFAULT_TEMPLATE_SUFFIX,
+    DEFAULT_POST_HOOK, DEFAULT_PRE_HOOK, DEFAULT_PRE_RENDER_HOOK,
+    DEFAULT_TEMPLATE_SUFFIX,
 };
 use crate::error::{Error, Result};
 use crate::ext::PathExt;
@@ -31,6 +32,10 @@ pub struct ConfigV1 {
     pub post_hook_filename: String,
     #[serde(default = "get_default_pre_hook_filename")]
     pub pre_hook_filename: String,
+    #[serde(default = "get_default_pre_render_hook_filename")]
+    pub pre_render_hook_filename: String,
+    #[serde(default = "get_default_pre_render_hook_runner")]
+    pub pre_render_hook_runner: Vec<String>,
     #[serde(default = "get_default_post_hook_runner")]
     pub post_hook_runner: Vec<String>,
     #[serde(default = "get_default_pre_hook_runner")]
@@ -111,6 +116,14 @@ fn get_default_post_hook_runner() -> Vec<String> {
 
 fn get_default_post_hook_filename() -> String {
     DEFAULT_POST_HOOK.to_string()
+}
+
+fn get_default_pre_render_hook_runner() -> Vec<String> {
+    Vec::new()
+}
+
+fn get_default_pre_render_hook_filename() -> String {
+    DEFAULT_PRE_RENDER_HOOK.into()
 }
 
 fn get_default_pre_hook_filename() -> String {

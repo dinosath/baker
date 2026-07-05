@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+
+import json
+import sys
+
+payload = json.load(sys.stdin)
+answers = payload["answers"]
+json.dump(
+    {
+        "python_version": int(answers["python_version"]) + 1,
+        "derived_from": answers["python_version"],
+    },
+    sys.stdout,
+)

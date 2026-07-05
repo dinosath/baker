@@ -1,0 +1,9 @@
+schemaVersion: v1
+pre_render_hook_runner:
+  - python3
+
+questions:
+  python_version:
+    type: str
+    help: Which Python version should run hooks?
+    default: "3"

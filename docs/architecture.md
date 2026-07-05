@@ -7,9 +7,10 @@ Baker follows a layered flow that starts with command parsing and ends with gene
 2. **Template Acquisition (`src/loader`)** – `get_template` resolves a local path or Git repository into a working template directory.
 3. **Configuration (`src/config`)** – `Config::load_config` parses `baker.yaml`/`baker.json`, returning a validated `ConfigV1`. Configuration controls template suffixes, loop separators, hooks, and user questions.
 4. **Q&A (`src/prompt`)** – `prompt::handler::PromptHandler` drives interactive collection of answers using `dialoguer`, honoring defaults, validation rules, and `--non-interactive` mode.
-5. **Template Engine (`src/renderer`)** – `MiniJinjaRenderer` renders file content, filenames, and hook names using the collected answers.
-6. **Processing (`src/template`)** – `TemplateProcessor` evaluates each template entry, decides whether to write, copy, create directories, or ignore paths (respecting `.bakerignore`), and expands loop-driven templates into multiple outputs.
-7. **Filesystem Effects (`src/cli/processor.rs`)** – `FileProcessor` applies `TemplateOperation`s, prompting for overwrites unless suppressed by `--skip-confirms`. Hooks run before and after processing when provided.
+5. **Pre-render Hook (`src/cli`)** – When present, `hooks/pre_render` receives the collected answers and can return additional JSON answers before rendering begins.
+6. **Template Engine (`src/renderer`)** – `MiniJinjaRenderer` renders file content, filenames, and hook names using the collected answers.
+7. **Processing (`src/template`)** – `TemplateProcessor` evaluates each template entry, decides whether to write, copy, create directories, or ignore paths (respecting `.bakerignore`), and expands loop-driven templates into multiple outputs.
+8. **Filesystem Effects (`src/cli/processor.rs`)** – `FileProcessor` applies `TemplateOperation`s, prompting for overwrites unless suppressed by `--skip-confirms`. Hooks run before answer collection, before rendering, and after processing when provided.
 
 ## Supporting Modules
 - **`src/constants.rs`** centralises exit codes, verbosity thresholds, and validation defaults.
@@ -17,7 +18,7 @@ Baker follows a layered flow that starts with command parsing and ends with gene
 - **`src/ext`** hosts helper traits (for example, `PathExt`) to keep core modules uncluttered.
 
 ## Data Flow Highlights
-- Answers collected from prompts feed back into renderers, enabling templated defaults and conditional paths.
+- Answers collected from prompts can be enriched by the pre-render hook before they feed into renderers, enabling templated defaults, conditional paths, and generated structured data.
 - Dry-run mode short-circuits filesystem writes while still exercising rendering and logging for safe previews.
 - Skip-confirm flags toggle confirmation prompts independently for overwriting files and executing hooks.
 
