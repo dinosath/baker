@@ -114,6 +114,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn test_pre_render_hook_cli_merge() {
+        run_and_assert(
+            "tests/templates/pre_render_hook_unix",
+            "tests/expected/pre_render_hook_unix",
+            None,
+        );
+    }
+
+    #[test]
     fn test_loop_example() {
         run_and_assert(
             "examples/loop",

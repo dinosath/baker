@@ -1,7 +1,10 @@
 use crate::{
     cli::{
-        answers::AnswerCollector, context::GenerationContext, hooks::run_hook,
-        processor::FileProcessor, GenerateArgs, SkipConfirm,
+        answers::{merge_answer_object_output, AnswerCollector},
+        context::GenerationContext,
+        hooks::run_hook,
+        processor::FileProcessor,
+        GenerateArgs, SkipConfirm,
     },
     config::{Config, ConfigV1},
     error::{Error, Result},
@@ -46,6 +49,17 @@ impl Runner {
             pre_hook_output,
             context.template_root(),
         )?;
+        context.set_answers(answers);
+
+        let pre_render_hook_output =
+            self.maybe_run_pre_render_hook(&hook_plan, &context, &engine)?;
+
+        let answers = merge_answer_object_output(
+            pre_render_hook_output,
+            context.answers(),
+            "Pre-render hook",
+        );
+
         context.set_answers(answers);
 
         self.process_templates(&context, &engine)?;
@@ -111,6 +125,11 @@ impl Runner {
             &json!({}),
             Some(&config.pre_hook_filename),
         )?;
+        let pre_render_hook_filename = engine.render(
+            &config.pre_render_hook_filename,
+            &json!({}),
+            Some(&config.pre_render_hook_filename),
+        )?;
         let post_hook_filename = engine.render(
             &config.post_hook_filename,
             &json!({}),
@@ -118,6 +137,7 @@ impl Runner {
         )?;
         let pre_hook_runner = config.pre_hook_runner.clone();
         let post_hook_runner = config.post_hook_runner.clone();
+        let pre_render_hook_runner = config.pre_render_hook_runner.clone();
         let post_hook_print_stdout = config.post_hook_print_stdout;
 
         let execute_hooks = self.confirm_hook_execution(
@@ -125,12 +145,14 @@ impl Runner {
             self.should_skip_hook_prompts(),
             &pre_hook_filename,
             &post_hook_filename,
+            &pre_render_hook_filename,
         )?;
 
-        let (pre_hook_file, post_hook_file) = self.get_hook_files(
+        let (pre_hook_file, post_hook_file, pre_render_hook_file) = self.get_hook_files(
             context.template_root(),
             &pre_hook_filename,
             &post_hook_filename,
+            &pre_render_hook_filename,
         );
 
         log::debug!(
@@ -143,11 +165,54 @@ impl Runner {
         Ok(HookPlan {
             pre_hook_file,
             post_hook_file,
+            pre_render_hook_file,
             execute_hooks,
             pre_hook_runner,
             post_hook_runner,
+            pre_render_hook_runner,
             post_hook_print_stdout,
         })
+    }
+
+    fn maybe_run_pre_render_hook(
+        &self,
+        hook_plan: &HookPlan,
+        context: &GenerationContext,
+        engine: &dyn TemplateRenderer,
+    ) -> Result<Option<String>> {
+        if !hook_plan.pre_render_hook_file.exists() {
+            return Ok(None);
+        }
+
+        if context.dry_run() {
+            log_dry_run_action(
+                "Would execute pre-render hook",
+                &hook_plan.pre_render_hook_file,
+            );
+            return Ok(None);
+        }
+
+        if hook_plan.execute_hooks {
+            let runner = render_hook_runner(
+                engine,
+                &hook_plan.pre_render_hook_runner,
+                context.answers_opt(),
+            )?;
+            log::debug!(
+                "Executing pre-render hook: {}",
+                hook_plan.pre_render_hook_file.display()
+            );
+            run_hook(
+                context.template_root(),
+                context.output_root(),
+                &hook_plan.pre_render_hook_file,
+                Some(context.answers()),
+                &runner,
+                false,
+            )
+        } else {
+            Ok(None)
+        }
     }
 
     fn maybe_run_pre_hook(
@@ -202,6 +267,7 @@ impl Runner {
             self.args.answers_file.clone(),
         )
     }
+
     fn process_templates(
         &self,
         context: &GenerationContext,
@@ -421,16 +487,25 @@ impl Runner {
         skip_hooks_check: bool,
         pre_hook_filename: &str,
         post_hook_filename: &str,
+        pre_render_hook_filename: &str,
     ) -> Result<bool> {
-        let (pre_hook_file, post_hook_file) =
-            self.get_hook_files(template_dir, pre_hook_filename, post_hook_filename);
-        if pre_hook_file.exists() || post_hook_file.exists() {
+        let (pre_hook_file, post_hook_file, pre_render_hook_file) = self.get_hook_files(
+            template_dir,
+            pre_hook_filename,
+            post_hook_filename,
+            pre_render_hook_filename,
+        );
+        if pre_hook_file.exists()
+            || post_hook_file.exists()
+            || pre_render_hook_file.exists()
+        {
             Ok(confirm(
             skip_hooks_check,
                 format!(
-                    "WARNING: This template contains the following hooks that will execute commands on your system:\n{}{}{}",
+                    "WARNING: This template contains the following hooks that will execute commands on your system:\n{}{}{}{}",
                     self.get_path_if_exists(&pre_hook_file),
                     self.get_path_if_exists(&post_hook_file),
+                    self.get_path_if_exists(&pre_render_hook_file),
                     "Do you want to run these hooks?",
                 ),
             )?)
@@ -451,11 +526,16 @@ impl Runner {
         template_dir: P,
         pre_hook_filename: &str,
         post_hook_filename: &str,
-    ) -> (PathBuf, PathBuf) {
+        pre_render_hook_filename: &str,
+    ) -> (PathBuf, PathBuf, PathBuf) {
         let template_dir = template_dir.as_ref();
         let hooks_dir = template_dir.join("hooks");
 
-        (hooks_dir.join(pre_hook_filename), hooks_dir.join(post_hook_filename))
+        (
+            hooks_dir.join(pre_hook_filename),
+            hooks_dir.join(post_hook_filename),
+            hooks_dir.join(pre_render_hook_filename),
+        )
     }
 
     /// Returns the file path as a string if the file exists; otherwise, returns an empty string.
@@ -478,9 +558,11 @@ impl Runner {
 struct HookPlan {
     pre_hook_file: PathBuf,
     post_hook_file: PathBuf,
+    pre_render_hook_file: PathBuf,
     execute_hooks: bool,
     pre_hook_runner: Vec<String>,
     post_hook_runner: Vec<String>,
+    pre_render_hook_runner: Vec<String>,
     post_hook_print_stdout: bool,
 }
 
@@ -610,8 +692,9 @@ mod tests {
         std::fs::create_dir_all(&hooks_dir).unwrap();
         std::fs::write(hooks_dir.join("pre"), "echo pre").unwrap();
         let runner = Runner::new(base_args());
-        let execute_hooks =
-            runner.confirm_hook_execution(temp_dir.path(), true, "pre", "post").unwrap();
+        let execute_hooks = runner
+            .confirm_hook_execution(temp_dir.path(), true, "pre", "post", "pre_render")
+            .unwrap();
         assert!(execute_hooks);
     }
 

@@ -3,8 +3,11 @@
 
 use crate::{
     cli::{
-        answers::AnswerCollector, context::GenerationContext, hooks::run_hook,
-        processor::FileProcessor, UpdateArgs,
+        answers::{merge_answer_object_output, AnswerCollector},
+        context::GenerationContext,
+        hooks::run_hook,
+        processor::FileProcessor,
+        UpdateArgs,
     },
     config::{Config, ConfigV1},
     conflict::ConflictStyle,
@@ -122,6 +125,15 @@ impl UpdateRunner {
             Some(merged_json_str),
             None,
         )?;
+        context.set_answers(final_answers);
+
+        let pre_render_hook_output =
+            self.maybe_run_pre_render_hook(&context, &engine, execute_hooks)?;
+        let final_answers = merge_answer_object_output(
+            pre_render_hook_output,
+            context.answers(),
+            "Pre-render hook",
+        );
         context.set_answers(final_answers);
 
         let bakerignore = parse_bakerignore_file(context.template_root())?;
@@ -335,6 +347,55 @@ impl UpdateRunner {
         Ok(())
     }
 
+    fn maybe_run_pre_render_hook(
+        &self,
+        context: &GenerationContext,
+        engine: &dyn TemplateRenderer,
+        execute_hooks: bool,
+    ) -> Result<Option<String>> {
+        let config = context.config();
+        let pre_render_hook_filename = engine
+            .render(
+                &config.pre_render_hook_filename,
+                &json!({}),
+                Some(&config.pre_render_hook_filename),
+            )
+            .unwrap_or_else(|_| config.pre_render_hook_filename.clone());
+
+        let pre_render_hook_file =
+            context.template_root().join("hooks").join(&pre_render_hook_filename);
+
+        if !pre_render_hook_file.exists() {
+            return Ok(None);
+        }
+
+        if context.dry_run() {
+            log::info!(
+                "[DRY RUN] Would execute pre-render hook: {}",
+                pre_render_hook_file.display()
+            );
+            return Ok(None);
+        }
+
+        if execute_hooks {
+            let runner = render_hook_runner(
+                engine,
+                &config.pre_render_hook_runner,
+                context.answers_opt(),
+            )?;
+            run_hook(
+                context.template_root(),
+                context.output_root(),
+                &pre_render_hook_file,
+                Some(context.answers()),
+                &runner,
+                false,
+            )
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Single combined prompt for both pre and post hooks (mirrors runner.rs behaviour).
     fn confirm_hooks(
         &self,
@@ -356,13 +417,25 @@ impl UpdateRunner {
                 Some(&config.post_hook_filename),
             )
             .unwrap_or_else(|_| config.post_hook_filename.clone());
+        let pre_render_hook_filename = engine
+            .render(
+                &config.pre_render_hook_filename,
+                &json!({}),
+                Some(&config.pre_render_hook_filename),
+            )
+            .unwrap_or_else(|_| config.pre_render_hook_filename.clone());
 
         let pre_hook_file =
             context.template_root().join("hooks").join(&pre_hook_filename);
         let post_hook_file =
             context.template_root().join("hooks").join(&post_hook_filename);
+        let pre_render_hook_file =
+            context.template_root().join("hooks").join(&pre_render_hook_filename);
 
-        if !pre_hook_file.exists() && !post_hook_file.exists() {
+        if !pre_hook_file.exists()
+            && !post_hook_file.exists()
+            && !pre_render_hook_file.exists()
+        {
             return Ok(false);
         }
 
@@ -376,6 +449,9 @@ impl UpdateRunner {
         }
         if post_hook_file.exists() {
             hook_list.push_str(&format!("{}\n", post_hook_file.display()));
+        }
+        if pre_render_hook_file.exists() {
+            hook_list.push_str(&format!("{}\n", pre_render_hook_file.display()));
         }
 
         crate::prompt::confirm(

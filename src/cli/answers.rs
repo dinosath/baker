@@ -8,6 +8,31 @@ use crate::{
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
+pub fn merge_answer_object_output(
+    output: Option<String>,
+    answers: &serde_json::Value,
+    hook_name: &str,
+) -> serde_json::Value {
+    let mut answers = answers.to_owned();
+    if let Some(result) = output {
+        log::debug!(
+            "{hook_name} stdout output content (attempting to parse as JSON answers): {result}"
+        );
+
+        let hook_output = serde_json::from_str::<Value>(&result).unwrap_or_else(|e| {
+            log::warn!("Failed to parse {hook_name} output as JSON: {e}");
+            Value::Object(Map::new())
+        });
+
+        if let (Value::Object(a_map), Value::Object(b_map)) = (&mut answers, hook_output)
+        {
+            a_map.extend(b_map);
+        }
+    }
+
+    answers
+}
+
 /// Collects answers from various sources: pre-hook output, command line arguments, and user prompts
 pub struct AnswerCollector<'a> {
     engine: &'a dyn TemplateRenderer,
@@ -575,6 +600,32 @@ mod tests {
 
         assert_eq!(result["name"], json!("alice"));
         assert_eq!(result["age"], json!(30));
+    }
+
+    #[test]
+    fn merge_answer_object_output_ignores_malformed_json() {
+        let answers = json!({"name": "baker", "version": 1});
+
+        let result = merge_answer_object_output(
+            Some("{not valid json".to_string()),
+            &answers,
+            "Pre-render hook",
+        );
+
+        assert_eq!(result, answers);
+    }
+
+    #[test]
+    fn merge_answer_object_output_ignores_non_object_json() {
+        let answers = json!({"name": "baker", "version": 1});
+
+        let result = merge_answer_object_output(
+            Some(r#"["not", "an", "object"]"#.to_string()),
+            &answers,
+            "Pre-render hook",
+        );
+
+        assert_eq!(result, answers);
     }
 
     #[test]

@@ -18,6 +18,9 @@ pub const DEFAULT_PRE_HOOK: &str = "pre";
 /// Default post-hook filename
 pub const DEFAULT_POST_HOOK: &str = "post";
 
+/// Default pre-render-hook filename
+pub const DEFAULT_PRE_RENDER_HOOK: &str = "pre_render";
+
 /// Ignore file name
 pub const IGNORE_FILE: &str = ".bakerignore";
 
